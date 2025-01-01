@@ -19,7 +19,7 @@ model:
   type: 'RectifiedFlow_VAE'
   back_bone: 'wavenet'
   n_layers: 30
-  n_chans: 512
+  n_chans: 768
   n_hidden: 256
   use_pitch_aug: true
   use_attention: false
