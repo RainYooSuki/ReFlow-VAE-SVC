@@ -1,27 +1,58 @@
 # ReFlow-VAE-SVC
 
-安装依赖，数据准备，配置编码器（hubert 或者 contentvec) ，声码器 (nsf-hifigan) 与音高提取器 (RMVPE) 的环节与 DDSP-SVC 项目相同。
+## 1.环境搭建
 
+```bash
+git clone https://github.com/yxlllc/ReFlow-VAE-SVC
+```
 
-（1）预处理：
+```bash
+cd ReFlow-VAE-SVC
+```
+
+```bash
+python -m venv venv
+```
+
+```bash
+./venv/scripts/activate
+```
+
+```bash
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+```
+
+```bash
+pip install -r requirements.txt
+```
+
+## 2.预处理数据
 
 ```bash
 python preprocess.py -c configs/reflow-vae-wavenet.yaml
 ```
 
-（2）训练（无底模）：
+## 3.正式训练
 
 ```bash
 python train.py -c configs/reflow-vae-wavenet.yaml
 ```
-wavenet的Beta版底模可以在这里下载：https://huggingface.co/OOPPEENN/pretrained_model
-lynxnet的Bate版底模可以在这里下载：https://huggingface.co/tepetst3033/Reflow_VAE_SVC_retrained_model_with_lynxnet
 
-（3）非实时推理：
+### 3.1. 可下载底模
+
+[wavenet的Beta版底模](https://huggingface.co/OOPPEENN/pretrained_model)
+
+[lynxnet的Beta版底模](https://huggingface.co/tepetst3033/Reflow_VAE_SVC_retrained_model_with_lynxnet)
+
+## 4.非实时推理：
 
 ```bash
 # 普通模式, 需要语义编码器, 比如 contentvec
 python main.py -i <input.wav> -m <model_ckpt.pt> -o <output.wav> -k <keychange (semitones)> -tid <target_speaker_id> -step <infer_step> -method <method>
+
+```
+
+```bash
 # VAE 模式, 无需语义编码器, 特化 sid 到 tid 的变声（或者音高编辑，如果sid == tid）
 python main.py -i <input.wav> -m <model_ckpt.pt> -o <output.wav> -k <keychange (semitones)> -sid <source_speaker_id> -tid <target_speaker_id> -step <infer_step> -method <method>
 ```
