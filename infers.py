@@ -13,7 +13,7 @@ args = parser.parse_args()
 model_name = args.model_name
 methods = args.methods
 
-input_folder = 'raw'
+input_folder = 'raw_inference_wav'
 output_folder = "results"
 
 input_audio_paths = sorted([f'"{glob.escape(path)}"' for path in glob.glob(input_folder + "/*")])
