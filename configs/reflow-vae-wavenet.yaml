@@ -1,7 +1,7 @@
 data:
   f0_extractor: 'rmvpe' # 'parselmouth', 'dio', 'harvest', 'crepe' or 'rmvpe'
-  f0_min: 40
-  f0_max: 1200
+  f0_min: 65 # about C2
+  f0_max: 800 # about G5
   sampling_rate: 44100
   block_size: 512 # Equal to hop_length
   duration: 2 # Audio duration during training, must be less than the duration of the shortest audio clip
@@ -27,10 +27,10 @@ model:
 device: cuda # training device
 vocoder:
   type: 'nsf-hifigan'
-  ckpt: 'pretrain/nsf_hifigan/model'
+  ckpt: 'pretrain/nsf_hifigan/nsf.ckpt'
 infer:
   infer_step: 50
-  method: 'euler' # 'euler', 'rk4'
+  method: 'rk4' # 'euler', 'rk4'
 env:
   expdir: exp/reflowvae-test
   gpu_id: 0
@@ -42,10 +42,10 @@ train:
   cache_device: 'cuda' # Set to 'cuda' to cache the data into the Graphics-Memory, fastest speed for strong gpu
   cache_fp16: true
   epochs: 100000
-  interval_log: 1
+  interval_log: 200
   interval_val: 2000
   interval_force_save: 10000
-  lr: 0.0002
+  lr: 0.0001
   decay_step: 100000
   gamma: 0.5
   weight_decay: 0
