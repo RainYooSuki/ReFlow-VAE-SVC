@@ -6,7 +6,7 @@ import shutil
 parser = argparse.ArgumentParser(description='Process some audio files with a given model.')
 
 parser.add_argument('-m', '--model_name', type=str, required=True, help='Name of the model ')
-parser.add_argument('-method', '--methods', type=str, required=True, help='Name of the model ')
+parser.add_argument('-method', '--methods', type=str, default="rtk4", required=True, help='methods of the model ')
 
 args = parser.parse_args()
 
@@ -22,7 +22,7 @@ input_audio_args = ' '.join(input_audio_paths)
 #print(input_audio_args)
 
 for input_audio_path in input_audio_paths:
-    output_audio=input_audio_path+'_vocal.wav'
+    output_audio=input_audio_path+'_infenrence.wav'
     print (input_audio_path)
     command = (
         f"python main.py "
