@@ -59,11 +59,6 @@ python main.py -i <input.wav> -m <model_ckpt.pt> -o <output.wav> -k <keychange (
 ```
 
 ```bash
-# 普通批量推理模式, 需要语义编码器, 比如 contentvec
-python infers.py -m <model_ckpt.pt> -method <methods>
-```
-
-```bash
 # VAE 模式, 无需语义编码器, 特化 sid 到 tid 的变声（或者音高编辑，如果sid == tid）
 python main.py -i <input.wav> -m <model_ckpt.pt> -o <output.wav> -k <keychange (semitones)> -sid <source_speaker_id> -tid <target_speaker_id> -step <infer_step> -method <method>
 ```
