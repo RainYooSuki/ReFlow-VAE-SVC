@@ -5,12 +5,12 @@ import shutil
 
 parser = argparse.ArgumentParser(description='Process some audio files with a given model.')
 
-parser.add_argument('-m', '--model_name', type=str, required=True, help='Name of the model ')
-parser.add_argument('-method', '--methods', type=str, default="rtk4", required=True, help='methods of the model ')
+parser.add_argument('-m', '--model_ckpt', type=str, required=True, help='path to the model checkpoint')
+parser.add_argument('-method', '--methods', type=str, default="rk4", required=True, help='methods of the model')
 
 args = parser.parse_args()
 
-model_name = args.model_name
+model_name = args.model_ckpt
 methods = args.methods
 
 input_folder = 'raw_inference_wav'
