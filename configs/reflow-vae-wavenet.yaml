@@ -9,7 +9,7 @@ data:
   cnhubertsoft_gate: 10
   encoder_sample_rate: 16000
   encoder_hop_size: 320
-  encoder_out_channels: 768 # 256 if using 'hubertsoft'
+  encoder_out_channels: 768 # 256 if using 'hubertsoft' 1280 if using 'whisper-pgg-large'
   encoder_ckpt: pretrain/contentvec/checkpoint_best_legacy_500.pt
   train_path: data/train # Create a folder named "audio" under this path and put the audio clip in it
   valid_path: data/val # Create a folder named "audio" under this path and put the audio clip in it
@@ -19,7 +19,7 @@ model:
   type: 'RectifiedFlow_VAE'
   back_bone: 'wavenet'
   n_layers: 30
-  n_chans: 768
+  n_chans: 768 # 1280 if using 'whisper-pgg-large'
   n_hidden: 256
   use_pitch_aug: true
   use_attention: true
