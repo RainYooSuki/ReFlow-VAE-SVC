@@ -557,24 +557,42 @@ class Audio2WhisperPPG:
         if audio.dim() > 1:
             audio = audio.mean(dim=0)  # 转换为单声道
         
-        # 使用 Whisper 提取特征
-        mel = whisper.log_mel_spectrogram(audio).to(self.device)
-        # 检查梅尔频谱图的形状是否符合要求
-        n_mels, n_frames = mel.shape
-        expected_n_mels = self.model.dims.n_mels
-        if n_mels != expected_n_mels:
-            raise ValueError(f"Mel spectrogram has {n_mels} mels, but expected {expected_n_mels}.")
-
-        # 如果帧数不足，填充到 Whisper 的最小长度
-        min_frames = 3000  # Whisper 的最小帧数（30 秒音频对应的帧数）
-        if n_frames < min_frames:
-            padding = torch.zeros((n_mels, min_frames - n_frames), device=self.device)
-            mel = torch.cat([mel, padding], dim=1)
+        # 计算音频长度和采样率
+        sample_rate = 16000  # Whisper 的默认采样率
+        audio_length = audio.shape[0] / sample_rate  # 音频长度（秒）
+        
+        # 如果音频长度超过 30 秒，分割音频
+        if audio_length > 30:
+            segment_length = 30 * sample_rate  # 30 秒对应的样本数
+            segments = [audio[i:i + segment_length] for i in range(0, len(audio), segment_length)]
+        else:
+            segments = [audio]
+        
+        # 处理每个音频片段
+        features_list = []
+        for segment in segments:
+            mel = whisper.log_mel_spectrogram(segment).to(self.device)
+            print(mel.shape)
             
-        features = self.model.encoder(mel.unsqueeze(0))  # mel添加 batch 维度
+            # 检查梅尔频谱图的形状是否符合要求
+            n_mels, n_frames = mel.shape
+            expected_n_mels = self.model.dims.n_mels
+            if n_mels != expected_n_mels:
+                raise ValueError(f"Mel spectrogram has {n_mels} mels, but expected {expected_n_mels}.")
 
+            # 如果帧数不足，填充到 Whisper 的最小长度
+            min_frames = 3000  # Whisper 的最小帧数（30 秒音频对应的帧数）
+            if n_frames < min_frames:
+                padding = torch.zeros((n_mels, min_frames - n_frames), device=self.device)
+                mel = torch.cat([mel, padding], dim=1)
+                
+            features = self.model.encoder(mel.unsqueeze(0))  # 添加 batch 维度
+            print(features.shape)
+            features_list.append(features)
+        
+        # 将所有片段的特征拼接起来
+        features = torch.cat(features_list, dim=1)
         return features
-
 
 class Audio2WhisperPPGLarge:
     def __init__(self, path , device: str = "cpu"):
@@ -604,20 +622,39 @@ class Audio2WhisperPPGLarge:
         if audio.dim() > 1:
             audio = audio.mean(dim=0)  # 转换为单声道
         
-        # 使用 Whisper 提取特征
-        mel = whisper.log_mel_spectrogram(audio).to(self.device)
-        # 检查梅尔频谱图的形状是否符合要求
-        n_mels, n_frames = mel.shape
-        expected_n_mels = self.model.dims.n_mels
-        if n_mels != expected_n_mels:
-            raise ValueError(f"Mel spectrogram has {n_mels} mels, but expected {expected_n_mels}.")
-
-        # 如果帧数不足，填充到 Whisper 的最小长度
-        min_frames = 3000  # Whisper 的最小帧数（30 秒音频对应的帧数）
-        if n_frames < min_frames:
-            padding = torch.zeros((n_mels, min_frames - n_frames), device=self.device)
-            mel = torch.cat([mel, padding], dim=1)
+        # 计算音频长度和采样率
+        sample_rate = 16000  # Whisper 的默认采样率
+        audio_length = audio.shape[0] / sample_rate  # 音频长度（秒）
+        
+        # 如果音频长度超过 30 秒，分割音频
+        if audio_length > 30:
+            segment_length = 30 * sample_rate  # 30 秒对应的样本数
+            segments = [audio[i:i + segment_length] for i in range(0, len(audio), segment_length)]
+        else:
+            segments = [audio]
+        
+        # 处理每个音频片段
+        features_list = []
+        for segment in segments:
+            mel = whisper.log_mel_spectrogram(segment).to(self.device)
+            print(mel.shape)
             
-        features = self.model.encoder(mel.unsqueeze(0))  # mel添加 batch 维度
+            # 检查梅尔频谱图的形状是否符合要求
+            n_mels, n_frames = mel.shape
+            expected_n_mels = self.model.dims.n_mels
+            if n_mels != expected_n_mels:
+                raise ValueError(f"Mel spectrogram has {n_mels} mels, but expected {expected_n_mels}.")
 
+            # 如果帧数不足，填充到 Whisper 的最小长度
+            min_frames = 3000  # Whisper 的最小帧数（30 秒音频对应的帧数）
+            if n_frames < min_frames:
+                padding = torch.zeros((n_mels, min_frames - n_frames), device=self.device)
+                mel = torch.cat([mel, padding], dim=1)
+                
+            features = self.model.encoder(mel.unsqueeze(0))  # 添加 batch 维度
+            print(features.shape)
+            features_list.append(features)
+        
+        # 将所有片段的特征拼接起来
+        features = torch.cat(features_list, dim=1)
         return features
