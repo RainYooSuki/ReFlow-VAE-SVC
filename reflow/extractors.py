@@ -571,7 +571,7 @@ class Audio2WhisperPPG:
             padding = torch.zeros((n_mels, min_frames - n_frames), device=self.device)
             mel = torch.cat([mel, padding], dim=1)
             
-        features = self.model.encoder(mel.unsqueeze(0))  # 添加 batch 维度
+        features = self.model.encoder(mel.unsqueeze(0))  # mel添加 batch 维度
 
         return features
 
@@ -618,6 +618,6 @@ class Audio2WhisperPPGLarge:
             padding = torch.zeros((n_mels, min_frames - n_frames), device=self.device)
             mel = torch.cat([mel, padding], dim=1)
             
-        features = self.model.encoder(mel.unsqueeze(0))  # 添加 batch 维度
+        features = self.model.encoder(mel.unsqueeze(0))  # mel添加 batch 维度
 
         return features
