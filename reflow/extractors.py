@@ -255,6 +255,8 @@ class Units_Encoder:
             is_loaded_encoder = True
         if encoder == 'whisper-ppg':
             self.model = Audio2WhisperPPG(encoder_ckpt, device=device)
+        if encoder == 'whisper-ppg-large':
+            self.model = Audio2WhisperPPGLarge(encoder_ckpt, device=device)
         if not is_loaded_encoder:
             raise ValueError(f" [x] Unknown units encoder: {encoder}")
             
@@ -531,6 +533,53 @@ class Audio2WhisperPPG:
     def __init__(self, path , device: str = "cpu"):
         self.device = device
         print(f' [Encoder Model] Whisper PPG ')
+        
+        # 加载 Whisper 模型
+        self.model = whisper.load_model(path, device=device)
+        self.model.eval()  # 设置为评估模式
+        
+    @torch.no_grad()
+    def __call__(self, audio):
+        """
+        计算 PPG（Phoneme Posterior Gram）
+        :param audio: 输入音频，形状为 (T,)，即一维时间序列
+        :return: PPG 特征，形状为 (T', d)，其中 T' 是时间步数，d 是特征维度
+        """
+        # 将音频转换为适合 Whisper 的格式
+        if isinstance(audio, np.ndarray):
+            audio = torch.from_numpy(audio).float().to(self.device)
+        elif isinstance(audio, torch.Tensor):
+            audio = audio.float().to(self.device)
+        else:
+            raise ValueError("Input audio must be a numpy array or torch tensor.")
+
+        # 确保音频是单声道
+        if audio.dim() > 1:
+            audio = audio.mean(dim=0)  # 转换为单声道
+        
+        # 使用 Whisper 提取特征
+        mel = whisper.log_mel_spectrogram(audio).to(self.device)
+        # 检查梅尔频谱图的形状是否符合要求
+        n_mels, n_frames = mel.shape
+        expected_n_mels = self.model.dims.n_mels
+        if n_mels != expected_n_mels:
+            raise ValueError(f"Mel spectrogram has {n_mels} mels, but expected {expected_n_mels}.")
+
+        # 如果帧数不足，填充到 Whisper 的最小长度
+        min_frames = 3000  # Whisper 的最小帧数（30 秒音频对应的帧数）
+        if n_frames < min_frames:
+            padding = torch.zeros((n_mels, min_frames - n_frames), device=self.device)
+            mel = torch.cat([mel, padding], dim=1)
+            
+        features = self.model.encoder(mel.unsqueeze(0))  # 添加 batch 维度
+
+        return features
+
+
+class Audio2WhisperPPGLarge:
+    def __init__(self, path , device: str = "cpu"):
+        self.device = device
+        print(f' [Encoder Model] Whisper PPG Large')
         
         # 加载 Whisper 模型
         self.model = whisper.load_model(path, device=device)
