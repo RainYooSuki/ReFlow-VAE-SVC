@@ -255,8 +255,10 @@ class Units_Encoder:
             is_loaded_encoder = True
         if encoder == 'whisper-ppg':
             self.model = Audio2WhisperPPG(encoder_ckpt, device=device)
+            is_loaded_encoder = True
         if encoder == 'whisper-ppg-large':
             self.model = Audio2WhisperPPGLarge(encoder_ckpt, device=device)
+            is_loaded_encoder = True
         if not is_loaded_encoder:
             raise ValueError(f" [x] Unknown units encoder: {encoder}")
             
