@@ -18,6 +18,7 @@ from encoder.hubert.model import HubertSoft
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 from torchaudio.transforms import Resample
 import time
+import whisper
 
 CREPE_RESAMPLE_KERNEL = {}
 F0_KERNEL = {}
