@@ -2,6 +2,7 @@ fairseq
 librosa
 matplotlib
 numpy
+openai-whisper
 praat-parselmouth
 pyworld
 PyYAML
