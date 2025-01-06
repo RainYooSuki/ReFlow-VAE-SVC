@@ -1,0 +1,186 @@
+data:
+  f0_extractor: 'rmvpe' # 'parselmouth', 'dio', 'harvest', 'crepe' or 'rmvpe'
+  f0_min: 40 
+  f0_max: 1200 
+  sampling_rate: 44100
+  block_size: 512 # Equal to hop_length
+  duration: 2 # Audio duration during training, must be less than the duration of the shortest audio clip
+  encoder: 'contentvec768l12' # 'hubertsoft', 'hubertbase', 'hubertbase768', 'contentvec', 'contentvec768' or 'contentvec768l12' or 'cnhubertsoftfish' or 'whisper-ppg' or 'whisper-ppg-large'
+  cnhubertsoft_gate: 10
+  encoder_sample_rate: 16000
+  encoder_hop_size: 320
+  encoder_out_channels: 768 # 256 if using 'hubertsoft', 1024 if using 'whisper-ppg', 1280 if using 'whisper-ppg-large'
+  encoder_ckpt: pretrain/contentvec/checkpoint_best_legacy_500.pt
+  train_path: data/train # Create a folder named "audio" under this path and put the audio clip in it
+  valid_path: data/val # Create a folder named "audio" under this path and put the audio clip in it
+  extensions: # List of extension included in the data collection
+    - wav
+model:
+  type: 'RectifiedFlow_VAE'
+  back_bone: 'wavenet'
+  n_layers: 30
+  n_chans: 768
+  n_hidden: 256
+  use_pitch_aug: true
+  use_attention: true
+  n_spk: 1 # max number of different speakers
+device: cuda # training device
+vocoder:
+  type: 'nsf-hifigan'
+  ckpt: 'pretrain/nsf_hifigan/nsf.ckpt'
+infer:
+  infer_step: 50
+  method: 'rk4' # 'euler', 'rk4'
+env:
+  expdir: exp/reflowvae-test
+  gpu_id: 0
+spk_dict:
+  10KuroBousuku-CN: 0
+  11Barber-CN: 1
+  12ChuMing-CN: 2
+  13ChangGe-CN: 3
+  14QueHe-CN: 4
+  15QiXuan-CN: 5
+  16NamineRitsu-CN: 6
+  17LiYuan-CN: 7
+  18WenLi-CN: 8
+  19RanHuhu-CN: 9
+  1Crimson-CN: 10
+  20HuoLian-CN: 11
+  21XiaoYe-CN: 12
+  22QiLi-CN: 13
+  23QiFu-CN: 14
+  24XiaoMo-CN: 15
+  25YunHao-CN: 16
+  26ChuCi-CN: 17
+  27Tarara-CN: 18
+  28LuanMing-CN: 19
+  29HiragiYuki-CN: 20
+  2Orange-CN: 21
+  30TuYuan-CN: 22
+  3Tangerine-CN: 23
+  4Growl-CN: 24
+  5Steel-CN: 25
+  6Ghost-CN: 26
+  7David-CN: 27
+  8Lien-CN: 28
+  9Bianca-CN: 29
+  OpenSinger_ManRaw_0: 30
+  OpenSinger_ManRaw_1: 31
+  OpenSinger_ManRaw_10: 32
+  OpenSinger_ManRaw_11: 33
+  OpenSinger_ManRaw_12: 34
+  OpenSinger_ManRaw_13: 35
+  OpenSinger_ManRaw_14: 36
+  OpenSinger_ManRaw_15: 37
+  OpenSinger_ManRaw_16: 38
+  OpenSinger_ManRaw_17: 39
+  OpenSinger_ManRaw_18: 40
+  OpenSinger_ManRaw_19: 41
+  OpenSinger_ManRaw_2: 42
+  OpenSinger_ManRaw_20: 43
+  OpenSinger_ManRaw_21: 44
+  OpenSinger_ManRaw_22: 45
+  OpenSinger_ManRaw_23: 46
+  OpenSinger_ManRaw_24: 47
+  OpenSinger_ManRaw_25: 48
+  OpenSinger_ManRaw_26: 49
+  OpenSinger_ManRaw_27: 50
+  OpenSinger_ManRaw_3: 51
+  OpenSinger_ManRaw_4: 52
+  OpenSinger_ManRaw_5: 53
+  OpenSinger_ManRaw_6: 54
+  OpenSinger_ManRaw_7: 55
+  OpenSinger_ManRaw_8: 56
+  OpenSinger_ManRaw_9: 57
+  OpenSinger_WomanRaw_0: 58
+  OpenSinger_WomanRaw_1: 59
+  OpenSinger_WomanRaw_10: 60
+  OpenSinger_WomanRaw_11: 61
+  OpenSinger_WomanRaw_12: 62
+  OpenSinger_WomanRaw_13: 63
+  OpenSinger_WomanRaw_14: 64
+  OpenSinger_WomanRaw_15: 65
+  OpenSinger_WomanRaw_16: 66
+  OpenSinger_WomanRaw_17: 67
+  OpenSinger_WomanRaw_18: 68
+  OpenSinger_WomanRaw_19: 69
+  OpenSinger_WomanRaw_2: 70
+  OpenSinger_WomanRaw_20: 71
+  OpenSinger_WomanRaw_21: 72
+  OpenSinger_WomanRaw_22: 73
+  OpenSinger_WomanRaw_23: 74
+  OpenSinger_WomanRaw_24: 75
+  OpenSinger_WomanRaw_25: 76
+  OpenSinger_WomanRaw_26: 77
+  OpenSinger_WomanRaw_27: 78
+  OpenSinger_WomanRaw_28: 79
+  OpenSinger_WomanRaw_29: 80
+  OpenSinger_WomanRaw_3: 81
+  OpenSinger_WomanRaw_30: 82
+  OpenSinger_WomanRaw_31: 83
+  OpenSinger_WomanRaw_32: 84
+  OpenSinger_WomanRaw_33: 85
+  OpenSinger_WomanRaw_34: 86
+  OpenSinger_WomanRaw_35: 87
+  OpenSinger_WomanRaw_36: 88
+  OpenSinger_WomanRaw_37: 89
+  OpenSinger_WomanRaw_38: 90
+  OpenSinger_WomanRaw_39: 91
+  OpenSinger_WomanRaw_4: 92
+  OpenSinger_WomanRaw_40: 93
+  OpenSinger_WomanRaw_41: 94
+  OpenSinger_WomanRaw_42: 95
+  OpenSinger_WomanRaw_43: 96
+  OpenSinger_WomanRaw_44: 97
+  OpenSinger_WomanRaw_45: 98
+  OpenSinger_WomanRaw_46: 99
+  OpenSinger_WomanRaw_47: 100
+  OpenSinger_WomanRaw_5: 101
+  OpenSinger_WomanRaw_6: 102
+  OpenSinger_WomanRaw_7: 103
+  OpenSinger_WomanRaw_8: 104
+  OpenSinger_WomanRaw_9: 105
+  Opencpop: 106
+  Popcs: 107
+  m4singer_Alto-1: 108
+  m4singer_Alto-2: 109
+  m4singer_Alto-3: 110
+  m4singer_Alto-4: 111
+  m4singer_Alto-5: 112
+  m4singer_Alto-6: 113
+  m4singer_Alto-7: 114
+  m4singer_Bass-1: 115
+  m4singer_Bass-2: 116
+  m4singer_Bass-3: 117
+  m4singer_Soprano-1: 118
+  m4singer_Soprano-2: 119
+  m4singer_Soprano-3: 120
+  m4singer_Tenor-1: 121
+  m4singer_Tenor-2: 122
+  m4singer_Tenor-3: 123
+  m4singer_Tenor-4: 124
+  m4singer_Tenor-5: 125
+  m4singer_Tenor-6: 126
+  m4singer_Tenor-7: 127
+  "\u6771\u5317\u304D\u308A\u305F\u3093": 128
+  "\u6771\u5317\u30A4\u30BF\u30B3": 129
+  "\u6D3E\u8499_CHS": 130
+  "\u6D3E\u8499_EN": 131
+  "\u6D3E\u8499_JA": 132
+train:
+  num_workers: 0 # If your cpu and gpu are both very strong, set to 0 may be faster!
+  amp_dtype: bf16 # fp32, fp16 or bf16 (fp16 or bf16 may be faster if it is supported by your gpu)
+  batch_size: 48
+  cache_all_data: true # Save Internal-Memory or Graphics-Memory if it is false, but may be slow
+  cache_device: 'cuda' # Set to 'cuda' to cache the data into the Graphics-Memory, fastest speed for strong gpu
+  cache_fp16: true
+  epochs: 100000
+  interval_log: 200
+  interval_val: 2000
+  interval_force_save: 10000
+  lr: 0.0001
+  decay_step: 100000
+  gamma: 0.5
+  weight_decay: 0
+  save_opt: false  
