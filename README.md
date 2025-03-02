@@ -7,18 +7,6 @@ git clone https://github.com/RainYooSuki/ReFlow-VAE-SVC.git
 ```
 
 ```bash
-cd ReFlow-VAE-SVC
-```
-
-```bash
-python -m venv venv
-```
-
-```bash
-./venv/bin/activate
-```
-
-```bash
 pip install -r requirements.txt
 ```
 
