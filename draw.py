@@ -3,12 +3,10 @@ import numpy as np
 import tqdm
 import os
 import shutil
-
 import soundfile as sf
 
 WAV_MIN_LENGTH = 2    # wav文件的最短时长 / The minimum duration of wav files
-SAMPLE_MIN = 2    # 抽取的文件数量下限 / The lower limit of the number of files to be extracted
-SAMPLE_MAX = 10    # 抽取的文件数量上限 / The upper limit of the number of files to be extracted
+SAMPLE_MIN = 5    # 抽取的文件数量下限 / The lower limit of the number of files to be extracted
 
 
 def parse_args(args=None, namespace=None):
@@ -89,7 +87,7 @@ def split_data(src_dir, dst_dir, ratio, extensions):
     
     # 计算需要抽取的wav文件数量
     num_files = int(len(files) * ratio)
-    num_files = max(SAMPLE_MIN, min(SAMPLE_MAX, num_files))
+    num_files = max(SAMPLE_MIN, num_files // 3)
 
     # 随机打乱文件名列表，并取出前num_files个作为抽取结果
     np.random.shuffle(files)
