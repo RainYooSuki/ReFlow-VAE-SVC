@@ -3,7 +3,7 @@
 ## 1.环境搭建
 
 ```bash
-git clone https://github.com/yxlllc/ReFlow-VAE-SVC
+git clone https://github.com/RainYooSuki/ReFlow-VAE-SVC.git
 ```
 
 ```bash
@@ -49,7 +49,7 @@ python train.py -c configs/reflow-vae-wavenet.yaml
 
 **(2).新NSF-HIFIGAN**
 
-[Kouon NSF-HIFIGAN](https://github.com/Kouon-Vocoder-Project/Kouon_Vocoder/releases/download/V2.0.0/kouon_pc_nsf-hifigan_1029_generators.zip)
+[OPENVPI NSF-HIFIGAN](https://github.com/openvpi/vocoders/releases/download/pc-nsf-hifigan-44.1k-hop512-128bin-2025.02/pc_nsf_hifigan_44.1k_hop512_128bin_2025.02.zip)
 
 ## 4.非实时推理：
 
