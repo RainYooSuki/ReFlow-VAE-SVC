@@ -5,12 +5,12 @@ data:
   sampling_rate: 44100
   block_size: 512 # Equal to hop_length
   duration: 2 # Audio duration during training, must be less than the duration of the shortest audio clip
-  encoder: 'contentvec768l12' # 'hubertsoft', 'hubertbase', 'hubertbase768', 'contentvec', 'contentvec768' or 'contentvec768l12' or 'cnhubertsoftfish' or 'whisper-ppg' or 'whisper-ppg-large'
+  encoder: 'whisper-ppg-large' # 'hubertsoft', 'hubertbase', 'hubertbase768', 'contentvec', 'contentvec768' or 'contentvec768l12' or 'cnhubertsoftfish' or 'whisper-ppg' or 'whisper-ppg-large'
   cnhubertsoft_gate: 10
   encoder_sample_rate: 16000
   encoder_hop_size: 320
-  encoder_out_channels: 768 # 256 if using 'hubertsoft', 1024 if using 'whisper-ppg', 1280 if using 'whisper-ppg-large'
-  encoder_ckpt: pretrain/contentvec/checkpoint_best_legacy_500.pt
+  encoder_out_channels: 1280 # 256 if using 'hubertsoft', 1024 if using 'whisper-ppg', 1280 if using 'whisper-ppg-large'
+  encoder_ckpt: pretrain/whisper/large-v2.pt
   train_path: data/train # Create a folder named "audio" under this path and put the audio clip in it
   valid_path: data/val # Create a folder named "audio" under this path and put the audio clip in it
   extensions: # List of extension included in the data collection
@@ -18,21 +18,21 @@ data:
 model:
   type: 'RectifiedFlow_VAE'
   back_bone: 'wavenet'
-  n_layers: 30
-  n_chans: 768
-  n_hidden: 256
+  n_layers: 60
+  n_chans: 1280
+  n_hidden: 768
   use_pitch_aug: true
   use_attention: true
   n_spk: 1 # max number of different speakers
 device: cuda # training device
 vocoder:
   type: 'nsf-hifigan'
-  ckpt: 'pretrain/nsf_hifigan/nsf.ckpt'
+  ckpt: 'pretrain/nsf_hifigan/kouon_pc_nsf-hifigan.ckpt'
 infer:
   infer_step: 50
   method: 'rk4' # 'euler', 'rk4'
 env:
-  expdir: exp/reflowvae-test
+  expdir: exp/
   gpu_id: 0
 train:
   num_workers: 0 # If your cpu and gpu are both very strong, set to 0 may be faster!
