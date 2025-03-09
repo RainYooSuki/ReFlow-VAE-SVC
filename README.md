@@ -18,6 +18,10 @@ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.o
 ## 2.预处理数据
 
 ```bash
+python draw.py
+```
+
+```bash
 python preprocess.py -c configs/reflow-vae-wavenet.yaml
 ```
 
