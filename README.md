@@ -27,17 +27,11 @@ python preprocess.py -c configs/reflow-vae-wavenet.yaml
 python train.py -c configs/reflow-vae-wavenet.yaml
 ```
 
-### 3.1. 可下载底模与新NSF-HIFIGAN
+### 3.1. 预训练NSF-HIFIGAN
 
-**(1).底模**
+**新NSF-HIFIGAN**
 
-[wavenet的Beta版底模](https://huggingface.co/OOPPEENN/pretrained_model)
-
-[lynxnet的Beta版底模](https://huggingface.co/tepetst3033/Reflow_VAE_SVC_retrained_model_with_lynxnet)
-
-**(2).新NSF-HIFIGAN**
-
-[OPENVPI NSF-HIFIGAN](https://github.com/openvpi/vocoders/releases/download/pc-nsf-hifigan-44.1k-hop512-128bin-2025.02/pc_nsf_hifigan_44.1k_hop512_128bin_2025.02.zip)
+[KOUON PC NSF-HIFIGAN](https://github.com/Kouon-Vocoder-Project/Kouon_Vocoder/releases/download/V2.0.0/kouon_pc_nsf-hifigan_1029_generators.zip)
 
 ## 4.非实时推理：
 
