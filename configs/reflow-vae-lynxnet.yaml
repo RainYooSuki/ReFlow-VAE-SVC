@@ -49,4 +49,4 @@ train:
   decay_step: 100000
   gamma: 0.5
   weight_decay: 0
-  save_opt: false  
+  save_opt: True
