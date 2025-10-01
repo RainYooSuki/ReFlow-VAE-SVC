@@ -640,7 +640,7 @@ class Audio2WhisperPPGLarge:
         features_list = []
         for segment in segments:
             mel = whisper.log_mel_spectrogram(segment).to(self.device)
-            print(mel.shape)
+            # print(mel.shape)
             
             # 检查梅尔频谱图的形状是否符合要求
             n_mels, n_frames = mel.shape
@@ -655,7 +655,7 @@ class Audio2WhisperPPGLarge:
                 mel = torch.cat([mel, padding], dim=1)
                 
             features = self.model.encoder(mel.unsqueeze(0))  # 添加 batch 维度
-            print(features.shape)
+            # print(features.shape)
             features_list.append(features)
         
         # 将所有片段的特征拼接起来
