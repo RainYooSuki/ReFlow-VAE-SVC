@@ -68,9 +68,8 @@ python train.py -c configs/reflow-vae-wavenet.yaml
 
 **新NSF-HIFIGAN**
 
-1.[KOUON PC NSF-HIFIGAN](https://github.com/Kouon-Vocoder-Project/Kouon_Vocoder/releases/download/V2.0.0/kouon_pc_nsf-hifigan_1029_generators.zip)
+[KOUON PC NSF-HIFIGAN](https://github.com/Kouon-Vocoder-Project/Kouon_Vocoder/releases/download/V2.0.0/kouon_pc_nsf-hifigan_1029_generators.zip)
 
-2.[PC-NSF-HiFiGAN](https://github.com/openvpi/vocoders/releases/download/pc-nsf-hifigan-44.1k-hop512-128bin-2025.02/pc_nsf_hifigan_44.1k_hop512_128bin_2025.02.zip)
 
 ## 4.非实时推理：
 
