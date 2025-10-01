@@ -35,8 +35,9 @@ ReFlow-VAE-SVC/
 ├── data/                    # 原始音频文件夹
 │   ├── train/
 │   │   └── audio/
-│             └── audio_file1.wav
-│             └── ...
+│             └─── your_speaker_name/
+│                       └── audio_file1.wav
+│                       └── ...
 │   └── val/                     
 │       └── audio/
 ```
