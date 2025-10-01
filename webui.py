@@ -371,7 +371,7 @@ def get_exp_config_files():
 with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
     gr.Markdown("# ReFlow VAE SVC WebUI")
     gr.Markdown("一个基于Gradio的图形界面，用于音频切片、预处理、训练和推理")
-
+    
     with gr.Tab("音频切片"):
         with gr.Row():
             with gr.Column():
@@ -384,18 +384,18 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
             with gr.Column():
                 slice_output = gr.Textbox(label="切片结果", lines=5, max_lines=10)
                 slice_output_dir = gr.Textbox(label="输出目录", lines=3, max_lines=5)
-
+    
     slice_button.click(
         slice_audio,
         inputs=[slice_threshold, slice_min_length, slice_min_interval, slice_hop_size, slice_max_sil_kept],
         outputs=[slice_output, slice_output_dir]
     )
-
+    
     with gr.Tab("数据预处理"):
         with gr.Row():
             with gr.Column():
                 draw_button = gr.Button("运行Draw (抽取验证集)")
-
+                
                 preprocess_config = gr.Dropdown(
                     choices=get_config_files(),
                     label="选择配置文件",
@@ -406,28 +406,28 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
                 stop_preprocess_button = gr.Button("停止预处理")
             with gr.Column():
                 preprocess_output = gr.Textbox(label="预处理输出", lines=10, max_lines=20)
-
+    
     draw_button.click(
         run_draw,
         outputs=[preprocess_output]
     )
-
+    
     refresh_preprocess_config.click(
         lambda: gr.Dropdown(choices=get_config_files()),
         outputs=[preprocess_config]
     )
-
+    
     preprocess_button.click(
         run_preprocess,
         inputs=[preprocess_config],
         outputs=[preprocess_output]
     )
-
+    
     stop_preprocess_button.click(
         stop_preprocess,
         outputs=[preprocess_output]
     )
-
+    
     with gr.Tab("模型训练"):
         with gr.Row():
             with gr.Column():
@@ -437,13 +437,13 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
                     value=get_config_files()[0] if get_config_files() else None
                 )
                 refresh_train_config = gr.Button("刷新配置文件列表")
-
+                
                 # 添加模型参数显示和修改
                 gr.Markdown("### 模型参数")
                 train_n_layers = gr.Number(label="n_layers", value=32)
                 train_n_chans = gr.Number(label="n_chans", value=1280)
                 train_n_hidden = gr.Number(label="n_hidden", value=512)
-
+                
                 gr.Markdown("### 训练参数")
                 train_num_workers = gr.Number(label="num_workers", value=0)
                 train_batch_size = gr.Number(label="batch_size", value=48)
@@ -452,30 +452,29 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
                 train_decay_step = gr.Number(label="decay_step", value=100000)
                 train_gamma = gr.Number(label="gamma", value=0.5)
                 train_weight_decay = gr.Number(label="weight_decay", value=0)
-
+                train_save_opt = gr.Checkbox(label="save_opt", value=True)
+                
                 load_config_button = gr.Button("加载配置")
                 save_config_button = gr.Button("保存配置")
                 train_button = gr.Button("开始训练")
                 stop_train_button = gr.Button("停止训练")
             with gr.Column():
                 train_output = gr.Textbox(label="训练输出", lines=10, max_lines=20)
-
-
+    
     def load_train_config(config_path):
         """
         加载训练配置
         """
         config_data = load_config_data(config_path)
         if config_data is None:
-            return [gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
-                    gr.update(), gr.update(), gr.update()]
-
+            return [gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update()]
+        
         # 获取模型参数
         model_params = config_data.get('model', {})
         n_layers = model_params.get('n_layers', 32)
         n_chans = model_params.get('n_chans', 1280)
         n_hidden = model_params.get('n_hidden', 512)
-
+        
         # 获取训练参数
         train_params = config_data.get('train', {})
         num_workers = train_params.get('num_workers', 0)
@@ -485,7 +484,8 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
         decay_step = train_params.get('decay_step', 100000)
         gamma = train_params.get('gamma', 0.5)
         weight_decay = train_params.get('weight_decay', 0)
-
+        save_opt = train_params.get('save_opt', True)
+        
         return [
             gr.update(value=n_layers),
             gr.update(value=n_chans),
@@ -496,26 +496,25 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
             gr.update(value=lr),
             gr.update(value=decay_step),
             gr.update(value=gamma),
-            gr.update(value=weight_decay)
+            gr.update(value=weight_decay),
+            gr.update(value=save_opt)
         ]
-
-
-    def save_train_config(config_path, n_layers, n_chans, n_hidden, num_workers, batch_size, epochs, lr, decay_step,
-                          gamma, weight_decay):
+    
+    def save_train_config(config_path, n_layers, n_chans, n_hidden, num_workers, batch_size, epochs, lr, decay_step, gamma, weight_decay, save_opt):
         """
         保存训练配置
         """
         config_data = load_config_data(config_path)
         if config_data is None:
             return "加载配置文件失败"
-
+        
         # 更新模型参数
         if 'model' not in config_data:
             config_data['model'] = {}
         config_data['model']['n_layers'] = int(n_layers)
         config_data['model']['n_chans'] = int(n_chans)
         config_data['model']['n_hidden'] = int(n_hidden)
-
+        
         # 更新训练参数
         if 'train' not in config_data:
             config_data['train'] = {}
@@ -526,44 +525,42 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
         config_data['train']['decay_step'] = int(decay_step)
         config_data['train']['gamma'] = float(gamma)
         config_data['train']['weight_decay'] = float(weight_decay)
-
+        config_data['train']['save_opt'] = bool(save_opt)
+        
         # 保存配置文件
         if save_config_data(config_path, config_data):
             return f"配置已保存到 {config_path}"
         else:
             return "保存配置文件失败"
-
-
+    
     refresh_train_config.click(
         lambda: gr.Dropdown(choices=get_config_files()),
         outputs=[train_config]
     )
-
+    
     load_config_button.click(
         load_train_config,
         inputs=[train_config],
-        outputs=[train_n_layers, train_n_chans, train_n_hidden, train_num_workers, train_batch_size, train_epochs,
-                 train_lr, train_decay_step, train_gamma, train_weight_decay]
+        outputs=[train_n_layers, train_n_chans, train_n_hidden, train_num_workers, train_batch_size, train_epochs, train_lr, train_decay_step, train_gamma, train_weight_decay, train_save_opt]
     )
-
+    
     save_config_button.click(
         save_train_config,
-        inputs=[train_config, train_n_layers, train_n_chans, train_n_hidden, train_num_workers, train_batch_size,
-                train_epochs, train_lr, train_decay_step, train_gamma, train_weight_decay],
+        inputs=[train_config, train_n_layers, train_n_chans, train_n_hidden, train_num_workers, train_batch_size, train_epochs, train_lr, train_decay_step, train_gamma, train_weight_decay, train_save_opt],
         outputs=[train_output]
     )
-
+    
     train_button.click(
         run_training,
         inputs=[train_config],
         outputs=[train_output]
     )
-
+    
     stop_train_button.click(
         stop_training,
         outputs=[train_output]
     )
-
+    
     with gr.Tab("音频推理"):
         with gr.Row():
             with gr.Column():
@@ -574,9 +571,7 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
                 )
                 refresh_infer_model = gr.Button("刷新模型文件列表")
                 infer_input = gr.Audio(label="上传音频文件", type="numpy")
-                infer_output_path = gr.Textbox(
-                    label="输出文件夹 (输出文件将基于输入文件名并添加_output后缀保存在outputs文件夹中)",
-                    value="outputs")
+                infer_output_path = gr.Textbox(label="输出文件夹 (输出文件将基于输入文件名并添加_output后缀保存在outputs文件夹中)", value="outputs")
                 infer_key = gr.Number(label="变调 (半音数)", value=0)
                 infer_speaker_id = gr.Number(label="目标说话人ID", value=1)
                 infer_step = gr.Number(label="推理步数", value=10)
@@ -590,17 +585,17 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
             with gr.Column():
                 infer_output = gr.Textbox(label="推理结果", lines=5, max_lines=10)
                 infer_result = gr.Audio(label="推理结果音频")
-
+    
     refresh_infer_model.click(
         lambda: gr.Dropdown(choices=get_model_files()),
         outputs=[infer_model]
     )
-
+    
     refresh_infer_config.click(
         lambda: gr.Dropdown(choices=[""] + get_exp_config_files()),
         outputs=[infer_config]
     )
-
+    
     infer_button.click(
         run_inference,
         inputs=[infer_model, infer_input, infer_output_path, infer_key, infer_speaker_id, infer_step, infer_config],
