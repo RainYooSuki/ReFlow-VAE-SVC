@@ -4,6 +4,7 @@ matplotlib
 numpy
 openai-whisper
 praat-parselmouth
+psutil
 pyworld
 PyYAML
 resampy
