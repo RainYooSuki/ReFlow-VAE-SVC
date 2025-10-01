@@ -1,4 +1,5 @@
 fairseq
+gradio
 librosa
 matplotlib
 numpy
