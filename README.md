@@ -82,3 +82,16 @@ python main.py -i <input.wav> -m <model_ckpt.pt> -o <output.wav> -k <keychange (
 # VAE 模式, 无需语义编码器, 特化 sid 到 tid 的变声（或者音高编辑，如果sid == tid）
 python main.py -i <input.wav> -m <model_ckpt.pt> -o <output.wav> -k <keychange (semitones)> -sid <source_speaker_id> -tid <target_speaker_id> -step <infer_step> -method <method>
 ```
+
+
+## 5.Web界面操作
+
+此处提供了一个基于Gradio的Web界面，可以方便地进行音频切片、数据预处理、模型训练和推理操作。（测试中）
+
+运行以下命令启动Web界面：
+
+```bash
+python webui.py
+```
+
+启动后，在浏览器中打开 http://localhost:7860 即可访问Web界面。
