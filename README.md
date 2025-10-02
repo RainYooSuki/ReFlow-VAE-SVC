@@ -44,7 +44,7 @@ ReFlow-VAE-SVC/
 #### 进行下一步前请确保：
 1. 将原始音频文件放入 `data_raw` 文件夹
 2. 运行 `slicer.py` 将长音频切片，结果保存在 `data_sliced` 文件夹
-3. 将 `data_sliced` 中的音频文件分别复制到 `data/train/audio` 和 `data/val/audio` 文件夹
+3. 将 `data_sliced` 中的音频文件复制到 `data/train/audio` 文件夹
 4. `pretrain`文件夹中存放好预训练的模型
 
 
