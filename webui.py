@@ -107,6 +107,7 @@ infer_process = None
 preprocess_output_buffer = ""
 train_output_buffer = ""
 infer_output_buffer = ""
+tensorboard_process = None  # 添加TensorBoard进程引用
 
 
 # 停止进程的函数
@@ -652,9 +653,190 @@ def get_exp_config_yaml_files():
     return config_files
 
 
+def start_tensorboard(port=6006):
+    """
+    启动TensorBoard监控exp目录下的日志
+    """
+    global tensorboard_process
+    
+    try:
+        import subprocess
+        import webbrowser
+        import os
+        import time
+        import threading
+        
+        # 检查是否已经有TensorBoard进程在运行
+        if tensorboard_process is not None and tensorboard_process.poll() is None:
+            tensorboard_url = f"http://localhost:{port}"
+            webbrowser.open(tensorboard_url)
+            return f"TensorBoard已在运行中\n请在浏览器中查看: {tensorboard_url}"
+        
+        # 检查exp目录是否存在
+        if not os.path.exists("exp"):
+            return "错误: exp目录不存在"
+        
+        # 查找所有包含日志的子目录
+        log_dirs = []
+        for root, dirs, files in os.walk("exp"):
+            logs_path = os.path.join(root, "logs")
+            if os.path.exists(logs_path) and os.path.isdir(logs_path):
+                # 检查logs目录是否包含事件文件
+                try:
+                    has_event_files = any(file.startswith("events.out.tfevents") for file in os.listdir(logs_path))
+                    if has_event_files:
+                        # 使用相对路径作为日志标签
+                        relative_path = os.path.relpath(root, "exp")
+                        if relative_path == ".":
+                            name = os.path.basename(root)
+                        else:
+                            name = relative_path
+                        log_dirs.append(f"{name}:{logs_path}")
+                except OSError:
+                    # 忽略无法访问的目录
+                    continue
+        
+        if not log_dirs:
+            return "错误: 在exp目录中未找到TensorBoard日志文件"
+        
+        # 检查端口是否被占用，如果被占用则寻找新的端口
+        original_port = port
+        if is_port_in_use(port):
+            port = find_free_port()
+        
+        # 构建TensorBoard命令
+        cmd = [
+            sys.executable, "-m", "tensorboard.main",
+            "--port", str(port),
+            "--host", "0.0.0.0"  # 允许外部访问
+        ]
+        
+        # 如果只有一个日志目录
+        if len(log_dirs) == 1:
+            cmd.extend(["--logdir", log_dirs[0].split(":", 1)[1]])
+        else:
+            # 如果有多个日志目录
+            cmd.extend(["--logdir_spec", ",".join(log_dirs)])
+        
+        # 使用独立线程启动TensorBoard
+        def run_tensorboard():
+            global tensorboard_process
+            try:
+                # 启动TensorBoard进程
+                tensorboard_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                # 等待一点时间确保TensorBoard启动
+                time.sleep(5)
+                
+                # 检查进程是否仍在运行
+                if tensorboard_process.poll() is None:
+                    print(f"TensorBoard已在端口 {port} 启动")
+                else:
+                    # 读取错误输出
+                    stdout, stderr = tensorboard_process.communicate()
+                    error_msg = stderr.decode('utf-8') if stderr else "未知错误"
+                    print(f"启动TensorBoard时出错:\n{error_msg}")
+            except Exception as e:
+                print(f"启动TensorBoard时出现异常: {str(e)}")
+        
+        # 在独立线程中启动TensorBoard
+        thread = threading.Thread(target=run_tensorboard, daemon=True)
+        thread.start()
+        
+        # 等待一小段时间让TensorBoard启动
+        time.sleep(2)
+        
+        # 打开浏览器
+        tensorboard_url = f"http://localhost:{port}"
+        webbrowser.open(tensorboard_url)
+        
+        port_info = f"端口 {original_port} 已被占用，使用端口 {port}" if port != original_port else f"端口 {port}"
+        
+        if len(log_dirs) == 1:
+            return f"TensorBoard启动命令已发送，{port_info}\n监控目录: {log_dirs[0].split(':', 1)[0]}\n请在浏览器中查看: {tensorboard_url}"
+        else:
+            dirs_list = "\n".join([f"  - {dir_name}" for dir_name in [d.split(':', 1)[0] for d in log_dirs]])
+            return f"TensorBoard启动命令已发送，{port_info}\n监控以下目录:\n{dirs_list}\n请在浏览器中查看: {tensorboard_url}"
+    except Exception as e:
+        import traceback
+        return f"启动TensorBoard时出现异常: {str(e)}\n{traceback.format_exc()}"
+
+
+def stop_tensorboard():
+    """
+    停止TensorBoard进程
+    """
+    global tensorboard_process
+    try:
+        import subprocess
+        import os
+        
+        # 如果有TensorBoard进程在运行，则终止它
+        if tensorboard_process is not None and tensorboard_process.poll() is None:
+            tensorboard_process.terminate()
+            tensorboard_process.wait()
+            tensorboard_process = None
+            return "TensorBoard已停止"
+        
+        # 查找并终止TensorBoard进程
+        if os.name == 'nt':  # Windows
+            subprocess.run(["taskkill", "/f", "/im", "tensorboard.exe"], capture_output=True)
+        else:  # Unix/Linux/Mac
+            subprocess.run(["pkill", "-f", "tensorboard"], capture_output=True)
+        
+        return "TensorBoard已停止"
+    except Exception as e:
+        return f"停止TensorBoard时出现异常: {str(e)}"
+
+
+def is_port_in_use(port):
+    """
+    检查端口是否被占用
+    """
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(('localhost', port))
+            return False
+        except socket.error:
+            return True
+
+
+def find_free_port():
+    """
+    查找可用的端口
+    """
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('localhost', 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+    return port
+
+
 with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
     gr.Markdown("# ReFlow VAE SVC WebUI")
     gr.Markdown("一个基于Gradio的图形界面，用于音频切片、预处理、训练和推理")
+    
+    with gr.Tab("TensorBoard监控"):
+        with gr.Row():
+            with gr.Column():
+                tensorboard_port = gr.Number(label="TensorBoard端口", value=6006)
+                start_tensorboard_button = gr.Button("启动TensorBoard")
+                stop_tensorboard_button = gr.Button("停止TensorBoard")
+            with gr.Column():
+                tensorboard_output = gr.Textbox(label="TensorBoard状态", lines=5, max_lines=10)
+    
+    start_tensorboard_button.click(
+        start_tensorboard,
+        inputs=[tensorboard_port],
+        outputs=[tensorboard_output]
+    )
+    
+    stop_tensorboard_button.click(
+        stop_tensorboard,
+        outputs=[tensorboard_output]
+    )
 
     with gr.Tab("音频切片"):
         with gr.Row():
@@ -770,7 +952,7 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
                 # 新增的训练参数
                 train_amp_dtype = gr.Dropdown(
                     label="amp_dtype", 
-                    choices=["fp32", "fp16", "bf16"], 
+                    choices=["fp32", "fp16", "bf16"],
                     value="fp32"
                 )
                 train_interval_force_save = gr.Number(label="interval_force_save", value=5000)
