@@ -770,7 +770,7 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
                 # 新增的训练参数
                 train_amp_dtype = gr.Dropdown(
                     label="amp_dtype", 
-                    choices=["fp32", "fp16", "bf10"], 
+                    choices=["fp32", "fp16", "bf16"], 
                     value="fp32"
                 )
                 train_interval_force_save = gr.Number(label="interval_force_save", value=5000)
