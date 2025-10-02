@@ -20,6 +20,12 @@ def parse_args(args=None, namespace=None):
         type=str,
         required=True,
         help="path to the config file")
+    parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        required=False,
+        help="path to the model checkpoint for resuming training")
     return parser.parse_args(args=args, namespace=namespace)
 
 
@@ -55,7 +61,19 @@ if __name__ == '__main__':
     
     # load parameters
     optimizer = torch.optim.AdamW(model.parameters())
-    initial_global_step, model, optimizer = utils.load_model(args.env.expdir, model, optimizer, device=args.device)
+    
+    # Check if we should resume from a specific model checkpoint
+    if cmd.model and os.path.exists(cmd.model):
+        print(' [*] restoring model from', cmd.model)
+        ckpt = torch.load(cmd.model, map_location=torch.device(args.device))
+        global_step = ckpt['global_step']
+        model.load_state_dict(ckpt['model'], strict=False)
+        if ckpt.get('optimizer') != None:
+            optimizer.load_state_dict(ckpt['optimizer'])
+        initial_global_step = global_step
+    else:
+        initial_global_step, model, optimizer = utils.load_model(args.env.expdir, model, optimizer, device=args.device)
+        
     for param_group in optimizer.param_groups:
         param_group['initial_lr'] = args.train.lr
         param_group['lr'] = args.train.lr * args.train.gamma ** max((initial_global_step - 2) // args.train.decay_step, 0)
@@ -77,4 +95,3 @@ if __name__ == '__main__':
     
     # run
     train(args, initial_global_step, model, optimizer, scheduler, vocoder, loader_train, loader_valid)
-    

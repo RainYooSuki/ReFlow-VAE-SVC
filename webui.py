@@ -103,8 +103,10 @@ def slice_audio(threshold, min_length, min_interval, hop_size, max_sil_kept):
 # 全局变量用于存储进程引用
 preprocess_process = None
 train_process = None
+infer_process = None
 preprocess_output_buffer = ""
 train_output_buffer = ""
+infer_output_buffer = ""
 
 
 # 停止进程的函数
@@ -121,6 +123,17 @@ def stop_process(process):
         except psutil.NoSuchProcess:
             return False
     return False
+
+
+def stop_inference():
+    """
+    停止音频推理
+    """
+    global infer_process
+    if stop_process(infer_process):
+        return "推理已停止"
+    else:
+        return "没有正在运行的推理任务"
 
 
 def run_draw():
@@ -246,11 +259,15 @@ def stop_training():
         return "没有正在运行的训练任务"
 
 
-def run_inference(model_ckpt, input_audio, output_dir, key, speaker_id, infer_step, config_path):
+def run_inference(model_ckpt, input_audio, output_dir, key, speaker_id, infer_step, config_path, progress=gr.Progress()):
     """
-    音频推理功能
+    音频推理功能（支持长音频切片处理）
     """
+    global infer_process, infer_output_buffer
     try:
+        # 清空输出缓冲区
+        infer_output_buffer = ""
+        
         # 检查输入音频是否为空
         if input_audio is None:
             return "请先上传音频文件", None
@@ -276,11 +293,52 @@ def run_inference(model_ckpt, input_audio, output_dir, key, speaker_id, infer_st
         output_filename = f"{filename_without_ext}_output{ext}"
         output_path = os.path.join(output_dir, output_filename)
 
+        # 检查音频长度，如果超过一定长度则使用切片处理
+        audio, sr = librosa.load(temp_input_path, sr=None)
+        if len(audio) > sr * 30:  # 如果音频超过30秒，使用切片处理
+            # 使用slicer处理长音频
+            result = run_inference_with_slicer(model_ckpt, temp_input_path, output_path, key, speaker_id, infer_step, config_path)
+            # 如果是生成器（长音频处理），则逐个yield结果
+            if hasattr(result, '__iter__') and not isinstance(result, (str, tuple)):
+                last_yielded = ""
+                for output in result:
+                    if isinstance(output, tuple):
+                        text_output, audio_output = output
+                        if text_output != last_yielded:
+                            last_yielded = text_output
+                            yield text_output, audio_output
+                    else:
+                        if output != last_yielded:
+                            last_yielded = output
+                            yield output, None if "执行长音频推理时出现错误" in output else output_path
+            else:
+                yield result
+        else:
+            # 对于短音频，直接使用原来的推理方法
+            last_yielded = ""
+            for output in run_inference_direct(model_ckpt, temp_input_path, output_path, key, speaker_id, infer_step, config_path):
+                if output != last_yielded:
+                    last_yielded = output
+                    yield output, None if "推理过程中出现错误" in output or "执行推理时出现错误" in output else output_path
+    except Exception as e:
+        # 添加更详细的错误信息
+        import traceback
+        error_details = traceback.format_exc()
+        error_msg = f"执行推理时出现错误: {str(e)}\n详细信息:\n{error_details}"
+        yield error_msg, None
+
+
+def run_inference_direct(model_ckpt, input_path, output_path, key, speaker_id, infer_step, config_path):
+    """
+    直接推理方法（适用于短音频） - 实时输出版本
+    """
+    global infer_process, infer_output_buffer
+    try:
         # 构建命令行参数
         cmd = [
             sys.executable, 'main.py',
             '--model_ckpt', model_ckpt,
-            '--input', temp_input_path,
+            '--input', input_path,
             '--output', output_path,
             '--key', str(key),
             '--target_spk_id', str(speaker_id),
@@ -304,36 +362,214 @@ def run_inference(model_ckpt, input_audio, output_dir, key, speaker_id, infer_st
                 ])
 
         # 执行推理脚本并实时输出
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        infer_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
                                    cwd=os.getcwd(), encoding='utf-8')
-        output_lines = []
-
+        
+        last_yielded = ""
         # 实时读取输出
-        for line in process.stdout:
-            output_lines.append(line)
-            # 这里可以考虑使用回调函数更新界面，但Gradio不直接支持
-            # 目前我们收集所有输出并在最后返回
+        while True:
+            output = infer_process.stdout.readline()
+            if output == '' and infer_process.poll() is not None:
+                break
+            if output:
+                infer_output_buffer += output
+                # 实时更新输出显示（仅在有新内容时yield）
+                if infer_output_buffer != last_yielded:
+                    last_yielded = infer_output_buffer
+                    yield infer_output_buffer
+        
+        infer_process.wait()
 
-        # 等待进程结束
-        process.wait()
-
-        # 清理临时文件
-        os.unlink(temp_input_path)
-
-        output_text = ''.join(output_lines)
-
-        if process.returncode == 0:
+        if infer_process.returncode == 0:
             if os.path.exists(output_path):
-                return f"推理成功完成！\n\n输出日志:\n{output_text}", output_path
+                final_output = f"推理成功完成！\n\n输出日志:\n{infer_output_buffer}"
             else:
-                return f"推理完成但未找到输出文件:\n\n输出日志:\n{output_text}", None
+                final_output = f"推理完成但未找到输出文件:\n\n输出日志:\n{infer_output_buffer}"
         else:
-            return f"推理过程中出现错误:\n\n输出日志:\n{output_text}", None
+            final_output = f"推理过程中出现错误:\n\n输出日志:\n{infer_output_buffer}"
+            
+        if final_output != last_yielded:
+            yield final_output
     except Exception as e:
         # 添加更详细的错误信息
         import traceback
         error_details = traceback.format_exc()
-        return f"执行推理时出现错误: {str(e)}\n详细信息:\n{error_details}", None
+        error_msg = f"执行推理时出现错误: {str(e)}\n详细信息:\n{error_details}"
+        if error_msg != last_yielded:
+            yield error_msg
+
+
+def run_inference_with_slicer(model_ckpt, input_path, output_path, key, speaker_id, infer_step, config_path):
+    """
+    使用切片处理长音频的推理方法 - 单次加载模型处理所有切片
+    """
+    global infer_output_buffer
+    try:
+        infer_output_buffer = "开始处理长音频...\n"
+        last_yielded = infer_output_buffer
+        yield infer_output_buffer
+        
+        # 1. 先检测输入音频长度并切片
+        infer_output_buffer += "1. 正在加载音频并进行切片处理...\n"
+        if infer_output_buffer != last_yielded:
+            last_yielded = infer_output_buffer
+            yield infer_output_buffer
+        
+        # 加载音频
+        audio, sample_rate = librosa.load(input_path, sr=None)
+        if len(audio.shape) > 1:
+            audio = librosa.to_mono(audio)
+        
+        # 创建临时目录用于存储切片
+        temp_dir = tempfile.mkdtemp()
+        temp_output_dir = tempfile.mkdtemp()
+        
+        try:
+            # 使用Slicer切片
+            slicer = Slicer(
+                sr=sample_rate,
+                threshold=-40.,       # 静音阈值 (dB)
+                min_length=5000,      # 最小音频长度 (ms)
+                min_interval=300,     # 最小静音间隔 (ms)
+                hop_size=20,          # Hop size (ms)
+                max_sil_kept=5000     # 最大静音保留 (ms)
+            )
+            
+            chunks = slicer.slice(audio)
+            
+            # 保存切片
+            chunk_files = []
+            for i, (chunk_key, chunk_data) in enumerate(chunks.items()):
+                if not chunk_data["slice"]:  # 只保存非静音片段
+                    split_time = chunk_data["split_time"].split(",")
+                    start = int(split_time[0])
+                    end = int(split_time[1])
+                    
+                    # 提取音频片段
+                    if len(audio.shape) > 1:
+                        segment = audio[:, start:end]
+                    else:
+                        segment = audio[start:end]
+                    
+                    # 保存音频片段
+                    chunk_file_path = os.path.join(temp_dir, f"chunk_{i:04d}.wav")
+                    sf.write(chunk_file_path, segment, sample_rate)
+                    chunk_files.append((i, chunk_file_path, start, end))
+            
+            # 检查切片数量，如果只有一个切片则使用强制切片模式
+            if len(chunk_files) <= 1:
+                infer_output_buffer += "   默认切片模式只生成一个片段或无有效片段，切换到强制切片模式(20秒一段)...\n"
+                if infer_output_buffer != last_yielded:
+                    last_yielded = infer_output_buffer
+                    yield infer_output_buffer
+                
+                # 清空之前的切片文件列表
+                chunk_files = []
+                
+                # 强制按20秒切片
+                chunk_duration = 20 * sample_rate  # 20秒
+                total_samples = len(audio)
+                num_chunks = (total_samples + chunk_duration - 1) // chunk_duration  # 向上取整
+                
+                for i in range(num_chunks):
+                    start = i * chunk_duration
+                    end = min((i + 1) * chunk_duration, total_samples)
+                    segment = audio[start:end]
+                    
+                    # 保存音频片段
+                    chunk_file_path = os.path.join(temp_dir, f"chunk_{i:04d}.wav")
+                    sf.write(chunk_file_path, segment, sample_rate)
+                    chunk_files.append((i, chunk_file_path, start, end))
+                
+                infer_output_buffer += f"   强制切片完成，共生成 {len(chunk_files)} 个切片\n"
+                if infer_output_buffer != last_yielded:
+                    last_yielded = infer_output_buffer
+                    yield infer_output_buffer
+            else:
+                infer_output_buffer += f"   切片完成，共生成 {len(chunk_files)} 个切片\n"
+                if infer_output_buffer != last_yielded:
+                    last_yielded = infer_output_buffer
+                    yield infer_output_buffer
+            
+            # 2. 使用main.py一次性处理所有切片（单次加载模型）
+            infer_output_buffer += "2. 正在加载模型并处理所有切片...\n"
+            if infer_output_buffer != last_yielded:
+                last_yielded = infer_output_buffer
+                yield infer_output_buffer
+            
+            # 构建命令行参数，让main.py处理所有切片
+            cmd = [
+                sys.executable, 'main.py',
+                '--model_ckpt', model_ckpt,
+                '--input', input_path,
+                '--output', output_path,
+                '--key', str(key),
+                '--target_spk_id', str(speaker_id),
+                '--infer_step', str(infer_step)
+            ]
+
+            if config_path:
+                # 加载配置以获取默认参数
+                try:
+                    args = utils.load_config(config_path)
+                    cmd.extend([
+                        '--pitch_extractor', args.infer.pitch_extractor or 'rmvpe',
+                        '--f0_min', str(args.data.f0_min or 50),
+                        '--f0_max', str(args.data.f0_max or 1100)
+                    ])
+                except:
+                    cmd.extend([
+                        '--pitch_extractor', 'rmvpe',
+                        '--f0_min', '50',
+                        '--f0_max', '1100'
+                    ])
+
+            # 执行推理脚本并实时输出
+            infer_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+                                       cwd=os.getcwd(), encoding='utf-8')
+            
+            # 实时读取输出
+            while True:
+                output = infer_process.stdout.readline()
+                if output == '' and infer_process.poll() is not None:
+                    break
+                if output:
+                    infer_output_buffer += output
+                    # 实时更新输出显示（仅在有新内容时yield）
+                    if infer_output_buffer != last_yielded:
+                        last_yielded = infer_output_buffer
+                        yield infer_output_buffer
+            
+            infer_process.wait()
+
+            if infer_process.returncode == 0:
+                if os.path.exists(output_path):
+                    infer_output_buffer += f"\n长音频推理成功完成！\n共处理 {len(chunk_files)} 个切片\n"
+                else:
+                    infer_output_buffer += f"\n推理完成但未找到输出文件\n"
+            else:
+                infer_output_buffer += f"\n推理过程中出现错误\n"
+                
+            if infer_output_buffer != last_yielded:
+                last_yielded = infer_output_buffer
+                yield infer_output_buffer
+            
+            return infer_output_buffer, output_path
+            
+        finally:
+            # 清理临时目录
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            shutil.rmtree(temp_output_dir, ignore_errors=True)
+            
+    except Exception as e:
+        # 添加更详细的错误信息
+        import traceback
+        error_details = traceback.format_exc()
+        error_msg = f"执行长音频推理时出现错误: {str(e)}\n详细信息:\n{error_details}"
+        infer_output_buffer += error_msg
+        yield infer_output_buffer
+        return infer_output_buffer, None
 
 
 def get_config_files():
@@ -398,6 +634,20 @@ def get_exp_config_files():
         for root, dirs, files in os.walk(exp_dir):
             for file in files:
                 if file.endswith('.yaml') or file.endswith('.yml'):
+                    config_files.append(os.path.join(root, file))
+    return config_files
+
+
+def get_exp_config_yaml_files():
+    """
+    获取exp文件夹中的config.yaml文件列表
+    """
+    exp_dir = "exp"
+    config_files = []
+    if os.path.exists(exp_dir):
+        for root, dirs, files in os.walk(exp_dir):
+            for file in files:
+                if file == 'config.yaml':
                     config_files.append(os.path.join(root, file))
     return config_files
 
@@ -471,13 +721,37 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
     with gr.Tab("模型训练"):
         with gr.Row():
             with gr.Column():
+                # 添加继续训练开关
+                train_resume_checkbox = gr.Checkbox(label="继续训练", value=False)
+                
+                # 原始配置文件选择（继续训练关闭时显示）
                 train_config = gr.Dropdown(
                     choices=get_config_files(),
                     label="选择配置文件",
                     value=get_config_files()[0] if get_config_files() else None
                 )
-                refresh_train_config = gr.Button("刷新配置文件列表")
-
+                
+                # 继续训练时的配置文件选择（继续训练开启时显示）
+                train_resume_config = gr.Dropdown(
+                    choices=get_exp_config_yaml_files(),  # 只显示config.yaml文件
+                    label="选择配置文件 (继续训练)",
+                    value=get_exp_config_yaml_files()[0] if get_exp_config_yaml_files() else None,
+                    visible=False  # 默认隐藏
+                )
+                
+                # 继续训练时的模型文件选择
+                train_resume_model = gr.Dropdown(
+                    choices=get_model_files(),
+                    label="选择模型文件 (继续训练)",
+                    value=get_model_files()[0] if get_model_files() else None,
+                    visible=False  # 默认隐藏
+                )
+                
+                with gr.Row():
+                    refresh_train_config = gr.Button("刷新配置文件列表")
+                    refresh_train_resume_config = gr.Button("刷新继续训练配置文件列表", visible=False)
+                    refresh_train_resume_model = gr.Button("刷新模型文件列表", visible=False)
+                
                 # 添加模型参数显示和修改
                 gr.Markdown("### 模型参数")
                 train_n_layers = gr.Number(label="n_layers", value=32)
@@ -492,12 +766,30 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
                 train_decay_step = gr.Number(label="decay_step", value=100000)
                 train_gamma = gr.Number(label="gamma", value=0.5)
                 train_weight_decay = gr.Number(label="weight_decay", value=0)
+                
+                # 新增的训练参数
+                train_amp_dtype = gr.Dropdown(
+                    label="amp_dtype", 
+                    choices=["fp32", "fp16", "bf10"], 
+                    value="fp32"
+                )
+                train_interval_force_save = gr.Number(label="interval_force_save", value=5000)
+                train_interval_log = gr.Number(label="interval_log", value=200)
+                train_interval_val = gr.Number(label="interval_val", value=2000)
                 train_save_opt = gr.Checkbox(label="save_opt", value=True)
 
-                load_config_button = gr.Button("加载配置")
-                save_config_button = gr.Button("保存配置")
-                train_button = gr.Button("开始训练")
-                stop_train_button = gr.Button("停止训练")
+                with gr.Row():
+                    load_config_button = gr.Button("加载配置")
+                    save_config_button = gr.Button("保存配置")
+                
+                with gr.Row():
+                    load_resume_config_button = gr.Button("加载配置 (继续训练)", visible=False)
+                    save_resume_config_button = gr.Button("保存配置 (继续训练)", visible=False)
+                
+                with gr.Row():
+                    train_button = gr.Button("开始训练")
+                    resume_train_button = gr.Button("继续训练", visible=False)  # 新增继续训练按钮，默认隐藏
+                    stop_train_button = gr.Button("停止训练")
             with gr.Column():
                 train_output = gr.Textbox(label="训练输出", lines=10, max_lines=20)
 
@@ -509,7 +801,7 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
         config_data = load_config_data(config_path)
         if config_data is None:
             return [gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
-                    gr.update(), gr.update(), gr.update(), gr.update()]
+                    gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update()]
 
         # 获取模型参数
         model_params = config_data.get('model', {})
@@ -526,6 +818,12 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
         decay_step = train_params.get('decay_step', 100000)
         gamma = train_params.get('gamma', 0.5)
         weight_decay = train_params.get('weight_decay', 0)
+        
+        # 新增的训练参数
+        amp_dtype = train_params.get('amp_dtype', 'fp32')
+        interval_force_save = train_params.get('interval_force_save', 5000)
+        interval_log = train_params.get('interval_log', 200)
+        interval_val = train_params.get('interval_val', 2000)
         save_opt = train_params.get('save_opt', True)
 
         return [
@@ -539,12 +837,24 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
             gr.update(value=decay_step),
             gr.update(value=gamma),
             gr.update(value=weight_decay),
+            gr.update(value=amp_dtype),
+            gr.update(value=interval_force_save),
+            gr.update(value=interval_log),
+            gr.update(value=interval_val),
             gr.update(value=save_opt)
         ]
 
 
+    def load_resume_train_config(config_path):
+        """
+        加载继续训练配置
+        """
+        # 继续训练使用相同的加载逻辑
+        return load_train_config(config_path)
+
+
     def save_train_config(config_path, n_layers, n_chans, n_hidden, num_workers, batch_size, epochs, lr, decay_step,
-                          gamma, weight_decay, save_opt):
+                          gamma, weight_decay, amp_dtype, interval_force_save, interval_log, interval_val, save_opt):
         """
         保存训练配置
         """
@@ -569,6 +879,12 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
         config_data['train']['decay_step'] = int(decay_step)
         config_data['train']['gamma'] = float(gamma)
         config_data['train']['weight_decay'] = float(weight_decay)
+        
+        # 保存新增的训练参数
+        config_data['train']['amp_dtype'] = amp_dtype
+        config_data['train']['interval_force_save'] = int(interval_force_save)
+        config_data['train']['interval_log'] = int(interval_log)
+        config_data['train']['interval_val'] = int(interval_val)
         config_data['train']['save_opt'] = bool(save_opt)
 
         # 保存配置文件
@@ -578,28 +894,175 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
             return "保存配置文件失败"
 
 
+    def save_resume_train_config(config_path, n_layers, n_chans, n_hidden, num_workers, batch_size, epochs, lr, decay_step,
+                                 gamma, weight_decay, amp_dtype, interval_force_save, interval_log, interval_val, save_opt):
+        """
+        保存继续训练配置
+        """
+        # 继续训练使用相同的保存逻辑
+        return save_train_config(config_path, n_layers, n_chans, n_hidden, num_workers, batch_size, epochs, lr, decay_step,
+                                 gamma, weight_decay, amp_dtype, interval_force_save, interval_log, interval_val, save_opt)
+
+    # 切换继续训练模式的函数
+    def toggle_resume_mode(resume_enabled):
+        """
+        切换继续训练模式
+        """
+        if resume_enabled:
+            # 继续训练模式：显示继续训练的配置和模型选择，隐藏原始配置选择
+            return [
+                gr.update(visible=False),  # train_config
+                gr.update(visible=True),   # train_resume_config
+                gr.update(visible=True),   # train_resume_model
+                gr.update(visible=False),  # refresh_train_config
+                gr.update(visible=True),   # refresh_train_resume_config
+                gr.update(visible=True),   # refresh_train_resume_model
+                gr.update(visible=False),  # load_config_button (原始)
+                gr.update(visible=False),  # save_config_button (原始)
+                gr.update(visible=True),   # load_resume_config_button
+                gr.update(visible=True),   # save_resume_config_button
+                gr.update(visible=False),  # train_button
+                gr.update(visible=True)    # resume_train_button
+            ]
+        else:
+            # 正常训练模式：显示原始配置选择，隐藏继续训练的配置和模型选择
+            return [
+                gr.update(visible=True),   # train_config
+                gr.update(visible=False),  # train_resume_config
+                gr.update(visible=False),  # train_resume_model
+                gr.update(visible=True),   # refresh_train_config
+                gr.update(visible=False),  # refresh_train_resume_config
+                gr.update(visible=False),  # refresh_train_resume_model
+                gr.update(visible=True),   # load_config_button (原始)
+                gr.update(visible=True),   # save_config_button (原始)
+                gr.update(visible=False),  # load_resume_config_button
+                gr.update(visible=False),  # save_resume_config_button
+                gr.update(visible=True),   # train_button
+                gr.update(visible=False)   # resume_train_button
+            ]
+
+    # 绑定继续训练开关事件
+    train_resume_checkbox.change(
+        toggle_resume_mode,
+        inputs=[train_resume_checkbox],
+        outputs=[
+            train_config, 
+            train_resume_config, 
+            train_resume_model,
+            refresh_train_config,
+            refresh_train_resume_config,
+            refresh_train_resume_model,
+            load_config_button,
+            save_config_button,
+            load_resume_config_button,
+            save_resume_config_button,
+            train_button,
+            resume_train_button
+        ]
+    )
+
     refresh_train_config.click(
         lambda: gr.Dropdown(choices=get_config_files()),
         outputs=[train_config]
+    )
+    
+    refresh_train_resume_config.click(
+        lambda: gr.Dropdown(choices=get_exp_config_yaml_files()),  # 只显示config.yaml文件
+        outputs=[train_resume_config]
+    )
+    
+    refresh_train_resume_model.click(
+        lambda: gr.Dropdown(choices=get_model_files()),
+        outputs=[train_resume_model]
     )
 
     load_config_button.click(
         load_train_config,
         inputs=[train_config],
         outputs=[train_n_layers, train_n_chans, train_n_hidden, train_num_workers, train_batch_size, train_epochs,
-                 train_lr, train_decay_step, train_gamma, train_weight_decay, train_save_opt]
+                 train_lr, train_decay_step, train_gamma, train_weight_decay, train_amp_dtype,
+                 train_interval_force_save, train_interval_log, train_interval_val, train_save_opt]
     )
 
     save_config_button.click(
         save_train_config,
         inputs=[train_config, train_n_layers, train_n_chans, train_n_hidden, train_num_workers, train_batch_size,
-                train_epochs, train_lr, train_decay_step, train_gamma, train_weight_decay, train_save_opt],
+                train_epochs, train_lr, train_decay_step, train_gamma, train_weight_decay,
+                train_amp_dtype, train_interval_force_save, train_interval_log, train_interval_val, train_save_opt],
+        outputs=[train_output]
+    )
+    
+    # 添加继续训练模式下的按钮点击事件
+    load_resume_config_button.click(
+        load_resume_train_config,
+        inputs=[train_resume_config],
+        outputs=[train_n_layers, train_n_chans, train_n_hidden, train_num_workers, train_batch_size, train_epochs,
+                 train_lr, train_decay_step, train_gamma, train_weight_decay, train_amp_dtype,
+                 train_interval_force_save, train_interval_log, train_interval_val, train_save_opt]
+    )
+
+    save_resume_config_button.click(
+        save_resume_train_config,
+        inputs=[train_resume_config, train_n_layers, train_n_chans, train_n_hidden, train_num_workers, train_batch_size,
+                train_epochs, train_lr, train_decay_step, train_gamma, train_weight_decay,
+                train_amp_dtype, train_interval_force_save, train_interval_log, train_interval_val, train_save_opt],
         outputs=[train_output]
     )
 
     train_button.click(
         run_training,
         inputs=[train_config],
+        outputs=[train_output]
+    )
+    
+    # 添加继续训练按钮的点击事件
+    def run_resume_training(resume_config_path, resume_model_path):
+        """
+        运行继续训练
+        """
+        global train_process, train_output_buffer
+        try:
+            # 清空输出缓冲区
+            train_output_buffer = ""
+            
+            # 构建命令行参数
+            cmd = [
+                sys.executable, 'train.py',
+                '--config', resume_config_path
+            ]
+            
+            # 如果指定了模型路径，则添加模型路径参数
+            if resume_model_path and os.path.exists(resume_model_path):
+                cmd.extend(['--model', resume_model_path])
+
+            # 执行训练脚本
+            train_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                             bufsize=1, universal_newlines=True, cwd=os.getcwd(), encoding='utf-8')
+            
+            # 实时读取输出
+            while True:
+                output = train_process.stdout.readline()
+                if output == '' and train_process.poll() is not None:
+                    break
+                if output:
+                    train_output_buffer += output
+                    # 实时更新输出显示
+                    yield train_output_buffer
+            
+            train_process.wait()
+            
+            if train_process.returncode == 0:
+                final_output = f"训练启动成功！\n\n输出:\n{train_output_buffer}"
+            else:
+                final_output = f"训练启动过程中出现错误:\n{train_output_buffer}"
+                
+            yield final_output
+        except Exception as e:
+            yield f"执行训练时出现错误: {str(e)}"
+
+    resume_train_button.click(
+        run_resume_training,
+        inputs=[train_resume_config, train_resume_model],
         outputs=[train_output]
     )
 
@@ -630,7 +1093,9 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
                     value=""
                 )
                 refresh_infer_config = gr.Button("刷新配置文件列表")
-                infer_button = gr.Button("开始推理")
+                with gr.Row():
+                    infer_button = gr.Button("开始推理")
+                    stop_infer_button = gr.Button("停止推理")
             with gr.Column():
                 infer_output = gr.Textbox(label="推理结果", lines=5, max_lines=10)
                 infer_result = gr.Audio(label="推理结果音频")
@@ -649,6 +1114,11 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
         run_inference,
         inputs=[infer_model, infer_input, infer_output_path, infer_key, infer_speaker_id, infer_step, infer_config],
         outputs=[infer_output, infer_result]
+    )
+    
+    stop_infer_button.click(
+        stop_inference,
+        outputs=[infer_output]
     )
 
 if __name__ == "__main__":
