@@ -260,107 +260,109 @@ def stop_training():
         return "没有正在运行的训练任务"
 
 
-def run_inference(model_ckpt, input_audio, output_dir, key, speaker_id, infer_step, config_path, progress=gr.Progress()):
+def run_inference(model_ckpt, input_file, input_folder, infer_mode, output_dir, key, speaker_id, infer_step, method, config_path, progress=gr.Progress()):
     """
-    音频推理功能（支持长音频切片处理）
+    音频推理功能 - 支持单文件推理和批量推理
     """
     global infer_process, infer_output_buffer
     try:
         # 清空输出缓冲区
         infer_output_buffer = ""
         
-        # 检查输入音频是否为空
-        if input_audio is None:
-            return "请先上传音频文件", None
-
-        # 保存上传的音频，使用更精确的方式处理文件大小
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
-            # input_audio是一个元组，第一个元素是采样率，第二个是音频数据
-            # 我们需要将音频数据写入临时文件
-            import soundfile as sf
-            # 确保数据类型正确，避免编码问题
-            audio_data = input_audio[1].astype(np.float32)
-            sf.write(temp_input.name, audio_data, input_audio[0])
-            temp_input_path = temp_input.name
-
-        # 确保outputs文件夹存在
+        # 确保输出文件夹存在
         if not output_dir or output_dir == "outputs":
             output_dir = "outputs"
         os.makedirs(output_dir, exist_ok=True)
+        
+        if infer_mode == "单文件推理":
+            # 检查输入文件路径是否为空
+            if not input_file or not os.path.exists(input_file):
+                return "请提供有效的音频文件路径", None, None
 
-        # 生成输出文件名：在原始文件名后添加"_output"后缀
-        input_filename = os.path.basename(temp_input_path)
-        filename_without_ext, ext = os.path.splitext(input_filename)
-        output_filename = f"{filename_without_ext}_output{ext}"
-        output_path = os.path.join(output_dir, output_filename)
+            # 生成输出文件名：在原始文件名后添加"_output"后缀
+            input_filename = os.path.basename(input_file)
+            filename_without_ext, ext = os.path.splitext(input_filename)
+            output_filename = f"{filename_without_ext}_output{ext}"
+            output_path = os.path.join(output_dir, output_filename)
 
-        # 检查音频长度，如果超过一定长度则使用切片处理
-        audio, sr = librosa.load(temp_input_path, sr=None)
-        if len(audio) > sr * 30:  # 如果音频超过30秒，使用切片处理
-            # 使用slicer处理长音频
-            result = run_inference_with_slicer(model_ckpt, temp_input_path, output_path, key, speaker_id, infer_step, config_path)
-            # 如果是生成器（长音频处理），则逐个yield结果
-            if hasattr(result, '__iter__') and not isinstance(result, (str, tuple)):
-                last_yielded = ""
-                for output in result:
-                    if isinstance(output, tuple):
-                        text_output, audio_output = output
-                        if text_output != last_yielded:
-                            last_yielded = text_output
-                            yield text_output, audio_output
-                    else:
-                        if output != last_yielded:
-                            last_yielded = output
-                            yield output, None if "执行长音频推理时出现错误" in output else output_path
-            else:
-                yield result
-        else:
-            # 对于短音频，直接使用原来的推理方法
+            # 直接使用推理方法（模型内部会处理切片）
             last_yielded = ""
-            for output in run_inference_direct(model_ckpt, temp_input_path, output_path, key, speaker_id, infer_step, config_path):
+            for output in run_audio_inference(model_ckpt, input_file, output_path, key, speaker_id, infer_step, method, config_path):
                 if output != last_yielded:
                     last_yielded = output
-                    yield output, None if "推理过程中出现错误" in output or "执行推理时出现错误" in output else output_path
+                    yield output, None if "推理过程中出现错误" in output or "执行推理时出现错误" in output else output_path, None
+        else:  # 批量推理
+            # 检查输入文件夹是否存在
+            if not os.path.exists(input_folder):
+                yield f"输入文件夹 {input_folder} 不存在", None, None
+                return
+                
+            # 获取所有音频文件
+            audio_extensions = ['.wav', '.flac', '.mp3', '.ogg', '.m4a']
+            audio_files = []
+            for file in os.listdir(input_folder):
+                if any(file.lower().endswith(ext) for ext in audio_extensions):
+                    audio_files.append(file)
+            
+            if not audio_files:
+                yield "输入文件夹中没有找到音频文件", None, None
+                return
+            
+            # 存储所有输出文件路径
+            output_files = []
+            
+            # 依次处理每个音频文件
+            for i, audio_file in enumerate(audio_files):
+                input_path = os.path.join(input_folder, audio_file)
+                
+                # 生成输出文件名
+                filename_without_ext, ext = os.path.splitext(audio_file)
+                output_filename = f"{filename_without_ext}_output{ext}"
+                output_path = os.path.join(output_dir, output_filename)
+                
+                # 添加到输出文件列表
+                output_files.append(output_path)
+                
+                # 更新进度信息
+                progress_info = f"正在处理 ({i+1}/{len(audio_files)}): {audio_file}\n"
+                yield progress_info, None, None
+                
+                # 执行推理
+                for output in run_audio_inference(model_ckpt, input_path, output_path, key, speaker_id, infer_step, method, config_path):
+                    # 实时显示推理过程
+                    combined_output = progress_info + output
+                    yield combined_output, None, None
+            
+            # 所有文件处理完成后
+            success_msg = f"批量推理完成！共处理 {len(audio_files)} 个文件。\n输出文件列表：\n" + "\n".join(output_files)
+            yield success_msg, None, output_files
+            
     except Exception as e:
         # 添加更详细的错误信息
         import traceback
         error_details = traceback.format_exc()
         error_msg = f"执行推理时出现错误: {str(e)}\n详细信息:\n{error_details}"
-        yield error_msg, None
+        yield error_msg, None, None
 
 
-def run_inference_direct(model_ckpt, input_path, output_path, key, speaker_id, infer_step, config_path):
+def run_audio_inference(model_ckpt, input_path, output_path, key, speaker_id, infer_step, method, config_path):
     """
-    直接推理方法（适用于短音频） - 实时输出版本
+    音频推理方法 - 实时输出版本
     """
     global infer_process, infer_output_buffer
     try:
-        # 构建命令行参数
+        # 构建命令行参数，按照 python main.py -i <input.wav> -m <model_ckpt.pt> -o <output.wav> 
+        # -k <keychange (semitones)> -tid <target_speaker_id> -step <infer_step> -method <method> 格式
         cmd = [
             sys.executable, 'main.py',
-            '--model_ckpt', model_ckpt,
-            '--input', input_path,
-            '--output', output_path,
-            '--key', str(key),
-            '--target_spk_id', str(speaker_id),
-            '--infer_step', str(infer_step)
+            '-i', input_path,
+            '-m', model_ckpt,
+            '-o', output_path,
+            '-k', str(key),
+            '-tid', str(speaker_id),
+            '-step', str(infer_step),
+            '-method', method
         ]
-
-        if config_path:
-            # 加载配置以获取默认参数
-            try:
-                args = utils.load_config(config_path)
-                cmd.extend([
-                    '--pitch_extractor', args.infer.pitch_extractor or 'rmvpe',
-                    '--f0_min', str(args.data.f0_min or 50),
-                    '--f0_max', str(args.data.f0_max or 1100)
-                ])
-            except:
-                cmd.extend([
-                    '--pitch_extractor', 'rmvpe',
-                    '--f0_min', '50',
-                    '--f0_max', '1100'
-                ])
 
         # 执行推理脚本并实时输出
         infer_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
@@ -398,179 +400,6 @@ def run_inference_direct(model_ckpt, input_path, output_path, key, speaker_id, i
         error_msg = f"执行推理时出现错误: {str(e)}\n详细信息:\n{error_details}"
         if error_msg != last_yielded:
             yield error_msg
-
-
-def run_inference_with_slicer(model_ckpt, input_path, output_path, key, speaker_id, infer_step, config_path):
-    """
-    使用切片处理长音频的推理方法 - 单次加载模型处理所有切片
-    """
-    global infer_output_buffer
-    try:
-        infer_output_buffer = "开始处理长音频...\n"
-        last_yielded = infer_output_buffer
-        yield infer_output_buffer
-        
-        # 1. 先检测输入音频长度并切片
-        infer_output_buffer += "1. 正在加载音频并进行切片处理...\n"
-        if infer_output_buffer != last_yielded:
-            last_yielded = infer_output_buffer
-            yield infer_output_buffer
-        
-        # 加载音频
-        audio, sample_rate = librosa.load(input_path, sr=None)
-        if len(audio.shape) > 1:
-            audio = librosa.to_mono(audio)
-        
-        # 创建临时目录用于存储切片
-        temp_dir = tempfile.mkdtemp()
-        temp_output_dir = tempfile.mkdtemp()
-        
-        try:
-            # 使用Slicer切片
-            slicer = Slicer(
-                sr=sample_rate,
-                threshold=-40.,       # 静音阈值 (dB)
-                min_length=5000,      # 最小音频长度 (ms)
-                min_interval=300,     # 最小静音间隔 (ms)
-                hop_size=20,          # Hop size (ms)
-                max_sil_kept=5000     # 最大静音保留 (ms)
-            )
-            
-            chunks = slicer.slice(audio)
-            
-            # 保存切片
-            chunk_files = []
-            for i, (chunk_key, chunk_data) in enumerate(chunks.items()):
-                if not chunk_data["slice"]:  # 只保存非静音片段
-                    split_time = chunk_data["split_time"].split(",")
-                    start = int(split_time[0])
-                    end = int(split_time[1])
-                    
-                    # 提取音频片段
-                    if len(audio.shape) > 1:
-                        segment = audio[:, start:end]
-                    else:
-                        segment = audio[start:end]
-                    
-                    # 保存音频片段
-                    chunk_file_path = os.path.join(temp_dir, f"chunk_{i:04d}.wav")
-                    sf.write(chunk_file_path, segment, sample_rate)
-                    chunk_files.append((i, chunk_file_path, start, end))
-            
-            # 检查切片数量，如果只有一个切片则使用强制切片模式
-            if len(chunk_files) <= 1:
-                infer_output_buffer += "   默认切片模式只生成一个片段或无有效片段，切换到强制切片模式(20秒一段)...\n"
-                if infer_output_buffer != last_yielded:
-                    last_yielded = infer_output_buffer
-                    yield infer_output_buffer
-                
-                # 清空之前的切片文件列表
-                chunk_files = []
-                
-                # 强制按20秒切片
-                chunk_duration = 20 * sample_rate  # 20秒
-                total_samples = len(audio)
-                num_chunks = (total_samples + chunk_duration - 1) // chunk_duration  # 向上取整
-                
-                for i in range(num_chunks):
-                    start = i * chunk_duration
-                    end = min((i + 1) * chunk_duration, total_samples)
-                    segment = audio[start:end]
-                    
-                    # 保存音频片段
-                    chunk_file_path = os.path.join(temp_dir, f"chunk_{i:04d}.wav")
-                    sf.write(chunk_file_path, segment, sample_rate)
-                    chunk_files.append((i, chunk_file_path, start, end))
-                
-                infer_output_buffer += f"   强制切片完成，共生成 {len(chunk_files)} 个切片\n"
-                if infer_output_buffer != last_yielded:
-                    last_yielded = infer_output_buffer
-                    yield infer_output_buffer
-            else:
-                infer_output_buffer += f"   切片完成，共生成 {len(chunk_files)} 个切片\n"
-                if infer_output_buffer != last_yielded:
-                    last_yielded = infer_output_buffer
-                    yield infer_output_buffer
-            
-            # 2. 使用main.py一次性处理所有切片（单次加载模型）
-            infer_output_buffer += "2. 正在加载模型并处理所有切片...\n"
-            if infer_output_buffer != last_yielded:
-                last_yielded = infer_output_buffer
-                yield infer_output_buffer
-            
-            # 构建命令行参数，让main.py处理所有切片
-            cmd = [
-                sys.executable, 'main.py',
-                '--model_ckpt', model_ckpt,
-                '--input', input_path,
-                '--output', output_path,
-                '--key', str(key),
-                '--target_spk_id', str(speaker_id),
-                '--infer_step', str(infer_step)
-            ]
-
-            if config_path:
-                # 加载配置以获取默认参数
-                try:
-                    args = utils.load_config(config_path)
-                    cmd.extend([
-                        '--pitch_extractor', args.infer.pitch_extractor or 'rmvpe',
-                        '--f0_min', str(args.data.f0_min or 50),
-                        '--f0_max', str(args.data.f0_max or 1100)
-                    ])
-                except:
-                    cmd.extend([
-                        '--pitch_extractor', 'rmvpe',
-                        '--f0_min', '50',
-                        '--f0_max', '1100'
-                    ])
-
-            # 执行推理脚本并实时输出
-            infer_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                       cwd=os.getcwd(), encoding='utf-8')
-            
-            # 实时读取输出
-            while True:
-                output = infer_process.stdout.readline()
-                if output == '' and infer_process.poll() is not None:
-                    break
-                if output:
-                    infer_output_buffer += output
-                    # 实时更新输出显示（仅在有新内容时yield）
-                    if infer_output_buffer != last_yielded:
-                        last_yielded = infer_output_buffer
-                        yield infer_output_buffer
-            
-            infer_process.wait()
-
-            if infer_process.returncode == 0:
-                if os.path.exists(output_path):
-                    infer_output_buffer += f"\n长音频推理成功完成！\n共处理 {len(chunk_files)} 个切片\n"
-                else:
-                    infer_output_buffer += f"\n推理完成但未找到输出文件\n"
-            else:
-                infer_output_buffer += f"\n推理过程中出现错误\n"
-                
-            if infer_output_buffer != last_yielded:
-                last_yielded = infer_output_buffer
-                yield infer_output_buffer
-            
-            return infer_output_buffer, output_path
-            
-        finally:
-            # 清理临时目录
-            import shutil
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            shutil.rmtree(temp_output_dir, ignore_errors=True)
-            
-    except Exception as e:
-        # 添加更详细的错误信息
-        import traceback
-        error_details = traceback.format_exc()
-        error_msg = f"执行长音频推理时出现错误: {str(e)}\n详细信息:\n{error_details}"
-        infer_output_buffer += error_msg
-        yield infer_output_buffer
-        return infer_output_buffer, None
 
 
 def get_config_files():
@@ -816,7 +645,7 @@ def find_free_port():
 
 with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
     gr.Markdown("# ReFlow VAE SVC WebUI")
-    gr.Markdown("一个基于Gradio的图形界面，用于音频切片、预处理、训练和推理")
+    gr.Markdown("一个基于Gradio的图形界面，用于音频预处理、训练和推理")
     
     with gr.Tab("TensorBoard监控"):
         with gr.Row():
@@ -1262,13 +1091,38 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
                     value=get_model_files()[0] if get_model_files() else None
                 )
                 refresh_infer_model = gr.Button("刷新模型文件列表")
-                infer_input = gr.Audio(label="上传音频文件", type="numpy")
+                
+                # 添加推理模式选择
+                infer_mode = gr.Radio(
+                    choices=["单文件推理", "批量推理"],
+                    label="推理模式",
+                    value="单文件推理"
+                )
+                
+                # 单文件推理组件
+                infer_input_file = gr.Textbox(
+                    label="输入文件路径 (可通过拖拽文件到下方区域获取路径)",
+                    value=""
+                )
+                infer_input_file_upload = gr.File(label="拖拽文件到此处获取路径", file_types=["audio"])
+                
+                # 批量推理组件
+                infer_input_folder = gr.Textbox(
+                    label="输入文件夹路径 (包含需要推理的音频文件)",
+                    value="input",
+                    visible=False  # 默认隐藏，只有在批量推理模式下才显示
+                )
                 infer_output_path = gr.Textbox(
                     label="输出文件夹 (输出文件将基于输入文件名并添加_output后缀保存在outputs文件夹中)",
                     value="outputs")
                 infer_key = gr.Number(label="变调 (半音数)", value=0)
                 infer_speaker_id = gr.Number(label="目标说话人ID", value=1)
                 infer_step = gr.Number(label="推理步数", value=10)
+                infer_method = gr.Dropdown(
+                    choices=["auto", "euler", "rk4"],
+                    label="推理方法",
+                    value="auto"
+                )
                 infer_config = gr.Dropdown(
                     choices=[""] + get_exp_config_files(),
                     label="配置文件 (可选，从exp文件夹读取)",
@@ -1280,8 +1134,14 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
                     stop_infer_button = gr.Button("停止推理")
             with gr.Column():
                 infer_output = gr.Textbox(label="推理结果", lines=5, max_lines=10)
-                infer_result = gr.Audio(label="推理结果音频")
-
+                infer_result = gr.Audio(label="推理结果音频 (单文件模式下显示)")
+                
+                # 批量推理结果显示
+                infer_result_gallery = gr.Gallery(
+                    label="推理结果音频 (批量模式下显示)",
+                    visible=False
+                )
+    
     refresh_infer_model.click(
         lambda: gr.Dropdown(choices=get_model_files()),
         outputs=[infer_model]
@@ -1291,11 +1151,54 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
         lambda: gr.Dropdown(choices=[""] + get_exp_config_files()),
         outputs=[infer_config]
     )
+    
+    # 添加推理模式切换功能
+    def toggle_infer_mode(mode):
+        """
+        切换推理模式时显示/隐藏相应组件
+        """
+        if mode == "单文件推理":
+            return [
+                gr.update(visible=True),   # infer_input_file (单文件路径)
+                gr.update(visible=True),   # infer_input_file_upload (单文件上传用于获取路径)
+                gr.update(visible=False),  # infer_input_folder (输入文件夹)
+                gr.update(visible=True),   # infer_result (单文件结果)
+                gr.update(visible=False)   # infer_result_gallery (批量结果)
+            ]
+        else:  # 批量推理
+            return [
+                gr.update(visible=False),  # infer_input_file (单文件路径)
+                gr.update(visible=False),  # infer_input_file_upload (单文件上传用于获取路径)
+                gr.update(visible=True),   # infer_input_folder (输入文件夹)
+                gr.update(visible=False),  # infer_result (单文件结果)
+                gr.update(visible=True)    # infer_result_gallery (批量结果)
+            ]
+    
+    infer_mode.change(
+        toggle_infer_mode,
+        inputs=[infer_mode],
+        outputs=[infer_input_file, infer_input_file_upload, infer_input_folder, infer_result, infer_result_gallery]
+    )
+    
+    # 添加文件上传事件处理函数，用于获取文件路径
+    def update_input_file_path(file_upload):
+        """
+        通过上传的文件更新输入文件路径
+        """
+        if file_upload is not None:
+            return file_upload.name
+        return ""
+    
+    infer_input_file_upload.change(
+        update_input_file_path,
+        inputs=[infer_input_file_upload],
+        outputs=[infer_input_file]
+    )
 
     infer_button.click(
         run_inference,
-        inputs=[infer_model, infer_input, infer_output_path, infer_key, infer_speaker_id, infer_step, infer_config],
-        outputs=[infer_output, infer_result]
+        inputs=[infer_model, infer_input_file, infer_input_folder, infer_mode, infer_output_path, infer_key, infer_speaker_id, infer_step, infer_method, infer_config],
+        outputs=[infer_output, infer_result, infer_result_gallery]
     )
     
     stop_infer_button.click(

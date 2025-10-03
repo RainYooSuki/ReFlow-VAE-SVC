@@ -345,9 +345,10 @@ if __name__ == '__main__':
             
             silent_length = round(start_frame * args.data.block_size) - current_length
             if silent_length >= 0:
-                result = np.append(result, np.zeros(silent_length))
-                result = np.append(result, seg_output)
+                # 修复：确保静音段确实是静音的
+                result = np.concatenate([result, np.zeros(silent_length), seg_output])
             else:
+                # 交叉淡化处理
                 result = cross_fade(result, seg_output, current_length + silent_length)
             current_length = current_length + silent_length + len(seg_output)
         sf.write(cmd.output, result, args.data.sampling_rate)
