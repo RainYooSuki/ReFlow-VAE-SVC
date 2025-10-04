@@ -2,11 +2,6 @@ import os
 import numpy as np
 import yaml
 import torch
-try:
-    import torch_musa
-    use_torch_musa = True
-except ImportError:
-    use_torch_musa = False
 import torch.nn.functional as F
 import pyworld as pw
 import parselmouth
@@ -17,8 +12,26 @@ from fairseq import checkpoint_utils
 from encoder.hubert.model import HubertSoft
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 from torchaudio.transforms import Resample
+from librosa import resample
 import time
 import whisper
+
+# 添加安全全局声明以解决PyTorch 2.6的安全限制
+try:
+    # 添加fairseq字典类到安全全局列表
+    if hasattr(torch.serialization, 'add_safe_globals'):
+        # 尝试导入Dictionary类并添加到安全全局列表
+        try:
+            from fairseq.data.dictionary import Dictionary
+            torch.serialization.add_safe_globals([Dictionary])
+        except ImportError:
+            # 如果无法导入，尝试使用字符串方式
+            torch.serialization.add_safe_globals(['fairseq.data.dictionary.Dictionary'])
+    elif hasattr(torch.serialization, 'safe_globals'):
+        # 对于某些版本，我们可能需要使用上下文管理器
+        pass
+except Exception as e:
+    print(f"添加安全全局声明时出错: {e}")
 
 CREPE_RESAMPLE_KERNEL = {}
 F0_KERNEL = {}
@@ -299,7 +312,17 @@ class Audio2HubertSoft(torch.nn.Module):
         print(' [Encoder Model] HuBERT Soft')
         self.hubert = HubertSoft()
         print(' [Loading] ' + path)
-        checkpoint = torch.load(path)
+        # 使用上下文管理器确保安全加载
+        if hasattr(torch.serialization, 'safe_globals'):
+            try:
+                from fairseq.data.dictionary import Dictionary
+                with torch.serialization.safe_globals([Dictionary]):
+                    checkpoint = torch.load(path)
+            except:
+                with torch.serialization.safe_globals(['fairseq.data.dictionary.Dictionary']):
+                    checkpoint = torch.load(path)
+        else:
+            checkpoint = torch.load(path)
         consume_prefix_in_state_dict_if_present(checkpoint, "module.")
         self.hubert.load_state_dict(checkpoint)
         self.hubert.eval()
@@ -316,7 +339,17 @@ class Audio2ContentVec():
         self.device = device
         print(' [Encoder Model] Content Vec')
         print(' [Loading] ' + path)
-        self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        # 使用上下文管理器确保安全加载
+        if hasattr(torch.serialization, 'safe_globals'):
+            try:
+                from fairseq.data.dictionary import Dictionary
+                with torch.serialization.safe_globals([Dictionary]):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+            except:
+                with torch.serialization.safe_globals(['fairseq.data.dictionary.Dictionary']):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        else:
+            self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
         self.hubert = self.models[0]
         self.hubert = self.hubert.to(self.device)
         self.hubert.eval()
@@ -344,7 +377,17 @@ class Audio2ContentVec768():
         self.device = device
         print(' [Encoder Model] Content Vec')
         print(' [Loading] ' + path)
-        self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        # 使用上下文管理器确保安全加载
+        if hasattr(torch.serialization, 'safe_globals'):
+            try:
+                from fairseq.data.dictionary import Dictionary
+                with torch.serialization.safe_globals([Dictionary]):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+            except:
+                with torch.serialization.safe_globals(['fairseq.data.dictionary.Dictionary']):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        else:
+            self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
         self.hubert = self.models[0]
         self.hubert = self.hubert.to(self.device)
         self.hubert.eval()
@@ -372,7 +415,17 @@ class Audio2ContentVec768L12():
         self.device = device
         print(' [Encoder Model] Content Vec')
         print(' [Loading] ' + path)
-        self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        # 使用上下文管理器确保安全加载
+        if hasattr(torch.serialization, 'safe_globals'):
+            try:
+                from fairseq.data.dictionary import Dictionary
+                with torch.serialization.safe_globals([Dictionary]):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+            except:
+                with torch.serialization.safe_globals(['fairseq.data.dictionary.Dictionary']):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        else:
+            self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
         self.hubert = self.models[0]
         self.hubert = self.hubert.to(self.device)
         self.hubert.eval()
@@ -407,7 +460,63 @@ class CNHubertSoftFish(torch.nn.Module):
         self.proj = torch.nn.Sequential(torch.nn.Dropout(0.1), torch.nn.Linear(768, 256))
         # self.label_embedding = nn.Embedding(128, 256)
 
-        state_dict = torch.load(path, map_location=device)
+        # 使用上下文管理器确保安全加载
+        if hasattr(torch.serialization, 'safe_globals'):
+            try:
+                from fairseq.data.dictionary import Dictionary
+                with torch.serialization.safe_globals([Dictionary]):
+                    state_dict = torch.load(path, map_location=device)
+            except:
+                with torch.serialization.safe_globals(['fairseq.data.dictionary.Dictionary']):
+                    state_dict = torch.load(path, map_location=device)
+        else:
+            state_dict = torch.load(path, map_location=device)
+        self.load_state_dict(state_dict)
+
+    @torch.no_grad()
+    def forward(self, audio):
+        input_values = self.feature_extractor(
+            audio, sampling_rate=16000, return_tensors="pt"
+        ).input_values
+        input_values = input_values.to(self.model.device)
+
+        return self._forward(input_values[0])
+
+    @torch.no_grad()
+    def _forward(self, input_values):
+        features = self.model(input_values)
+        features = self.proj(features.last_hidden_state)
+
+        # Top-k gating
+        topk, indices = torch.topk(features, self.gate_size, dim=2)
+        features = torch.zeros_like(features).scatter(2, indices, topk)
+        features = features / features.sum(2, keepdim=True)
+
+        return features.to(self.device)  # .transpose(1, 2)
+
+class Audio2HubertSoftFish(torch.nn.Module):
+    def __init__(self, path, h_sample_rate=16000, h_hop_size=320, device='cpu', gate_size=10):
+        super().__init__()
+        self.device = device
+        self.gate_size = gate_size
+
+        self.feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
+            "./pretrain/TencentGameMate/chinese-hubert-base")
+        self.model = HubertModel.from_pretrained("./pretrain/TencentGameMate/chinese-hubert-base")
+        self.proj = torch.nn.Sequential(torch.nn.Dropout(0.1), torch.nn.Linear(768, 256))
+        # self.label_embedding = nn.Embedding(128, 256)
+
+        # 使用上下文管理器确保安全加载
+        if hasattr(torch.serialization, 'safe_globals'):
+            try:
+                from fairseq.data.dictionary import Dictionary
+                with torch.serialization.safe_globals([Dictionary]):
+                    state_dict = torch.load(path, map_location=device)
+            except:
+                with torch.serialization.safe_globals(['fairseq.data.dictionary.Dictionary']):
+                    state_dict = torch.load(path, map_location=device)
+        else:
+            state_dict = torch.load(path, map_location=device)
         self.load_state_dict(state_dict)
 
     @torch.no_grad()
@@ -437,7 +546,17 @@ class Audio2HubertBase():
         self.device = device
         print(' [Encoder Model] HuBERT Base')
         print(' [Loading] ' + path)
-        self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        # 使用上下文管理器确保安全加载
+        if hasattr(torch.serialization, 'safe_globals'):
+            try:
+                from fairseq.data.dictionary import Dictionary
+                with torch.serialization.safe_globals([Dictionary]):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+            except:
+                with torch.serialization.safe_globals(['fairseq.data.dictionary.Dictionary']):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        else:
+            self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
         self.hubert = self.models[0]
         self.hubert = self.hubert.to(self.device)
         self.hubert = self.hubert.float()
@@ -462,7 +581,17 @@ class Audio2HubertBase768():
         self.device = device
         print(' [Encoder Model] HuBERT Base')
         print(' [Loading] ' + path)
-        self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        # 使用上下文管理器确保安全加载
+        if hasattr(torch.serialization, 'safe_globals'):
+            try:
+                from fairseq.data.dictionary import Dictionary
+                with torch.serialization.safe_globals([Dictionary]):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+            except:
+                with torch.serialization.safe_globals(['fairseq.data.dictionary.Dictionary']):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        else:
+            self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
         self.hubert = self.models[0]
         self.hubert = self.hubert.to(self.device)
         self.hubert = self.hubert.float()
@@ -487,7 +616,17 @@ class Audio2HubertBase768L12():
         self.device = device
         print(' [Encoder Model] HuBERT Base')
         print(' [Loading] ' + path)
-        self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        # 使用上下文管理器确保安全加载
+        if hasattr(torch.serialization, 'safe_globals'):
+            try:
+                from fairseq.data.dictionary import Dictionary
+                with torch.serialization.safe_globals([Dictionary]):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+            except:
+                with torch.serialization.safe_globals(['fairseq.data.dictionary.Dictionary']):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        else:
+            self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
         self.hubert = self.models[0]
         self.hubert = self.hubert.to(self.device)
         self.hubert = self.hubert.float()
@@ -512,7 +651,17 @@ class Audio2HubertLarge1024L24():
         self.device = device
         print(' [Encoder Model] HuBERT Base')
         print(' [Loading] ' + path)
-        self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        # 使用上下文管理器确保安全加载
+        if hasattr(torch.serialization, 'safe_globals'):
+            try:
+                from fairseq.data.dictionary import Dictionary
+                with torch.serialization.safe_globals([Dictionary]):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+            except:
+                with torch.serialization.safe_globals(['fairseq.data.dictionary.Dictionary']):
+                    self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
+        else:
+            self.models, self.saved_cfg, self.task = checkpoint_utils.load_model_ensemble_and_task([path], suffix="", )
         self.hubert = self.models[0]
         self.hubert = self.hubert.to(self.device)
         self.hubert = self.hubert.float()

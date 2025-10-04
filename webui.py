@@ -696,11 +696,200 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
                     label="选择配置文件",
                     value=get_config_files()[0] if get_config_files() else None
                 )
+                
+                def get_available_encoders():
+                    """
+                    获取可用的编码器选项
+                    """
+                    # 基本编码器选项 - 确保包含所有指定的编码器选项
+                    encoders = [
+                        'hubertsoft', 'hubertbase', 'hubertbase768', 
+                        'contentvec', 'contentvec768', 'contentvec768l12',
+                        'cnhubertsoftfish', 'whisper-ppg', 'whisper-ppg-large'
+                    ]
+                    
+                    # 检查pretrain目录中的实际文件
+                    pretrain_path = "pretrain"
+                    
+                    if os.path.exists(pretrain_path):
+                        # 检查各个编码器的预训练文件是否存在
+                        available_encoders = []
+                        
+                        # 检查contentvec相关文件
+                        if os.path.exists(os.path.join(pretrain_path, "contentvec")):
+                            available_encoders.extend(['contentvec', 'contentvec768', 'contentvec768l12'])
+                        
+                        # 检查whisper相关文件
+                        if os.path.exists(os.path.join(pretrain_path, "whisper-ppg-large", "large-v2.pt")):
+                            available_encoders.extend(['whisper-ppg', 'whisper-ppg-large'])
+                        
+                        # 检查hubert相关文件
+                        if (os.path.exists(os.path.join(pretrain_path, "hubert", "hubert_soft.pt")) or
+                            os.path.exists(os.path.join(pretrain_path, "hubert", "hubert_base.pt")) or
+                            os.path.exists(os.path.join(pretrain_path, "hubert", "hubert_base_768.pt"))):
+                            available_encoders.extend(['hubertsoft', 'hubertbase', 'hubertbase768'])
+                        
+                        # 检查cnhubertsoftfish相关文件
+                        if os.path.exists(os.path.join(pretrain_path, "cnhubertsoftfish")):
+                            available_encoders.append('cnhubertsoftfish')
+                        
+                        # 如果有可用的编码器文件，则返回基本编码器和可用编码器的交集
+                        # 但确保所有基本编码器都在列表中（即使文件不存在）
+                        result = list(set(encoders) & set(available_encoders)) if available_encoders else encoders
+                        # 确保所有基本编码器都在结果中
+                        for encoder in encoders:
+                            if encoder not in result:
+                                result.append(encoder)
+                        return result
+                    else:
+                        # 如果pretrain目录不存在，返回所有基本编码器选项
+                        return encoders
+                
+                def get_encoder_info(encoder_name):
+                    """
+                    获取编码器信息（路径和输出通道数）
+                    """
+                    encoder_paths = {
+                        'hubertsoft': 'pretrain/hubert/hubert_soft.pt',
+                        'hubertbase': 'pretrain/hubert/hubert_base.pt',
+                        'hubertbase768': 'pretrain/hubert/hubert_base_768.pt',
+                        'contentvec': 'pretrain/contentvec/checkpoint_best_legacy_500.pt',
+                        'contentvec768': 'pretrain/contentvec/checkpoint_best_legacy_500.pt',
+                        'contentvec768l12': 'pretrain/contentvec/checkpoint_best_legacy_500.pt',
+                        'cnhubertsoftfish': 'pretrain/cnhubertsoftfish/checkpoint_best_legacy_500.pt',
+                        'whisper-ppg': 'pretrain/whisper-ppg-large/large-v2.pt',
+                        'whisper-ppg-large': 'pretrain/whisper-ppg-large/large-v2.pt'
+                    }
+                    
+                    encoder_channels = {
+                        'hubertsoft': 256,
+                        'hubertbase': 256,
+                        'hubertbase768': 768,
+                        'contentvec': 768,
+                        'contentvec768': 768,
+                        'contentvec768l12': 768,
+                        'cnhubertsoftfish': 256,
+                        'whisper-ppg': 1024,
+                        'whisper-ppg-large': 1280
+                    }
+                    
+                    path = encoder_paths.get(encoder_name, '未知路径')
+                    channels = encoder_channels.get(encoder_name, '未知')
+                    
+                    # 检查路径是否存在
+                    if path != '未知路径' and os.path.exists(path):
+                        path_status = f"{path} (存在)"
+                    elif path != '未知路径':
+                        path_status = f"{path} (不存在)"
+                    else:
+                        path_status = path
+                    
+                    return path, path_status, channels  # 返回实际路径、显示路径和通道数
+                
+                def update_encoder_info(encoder_name):
+                    """
+                    更新编码器信息显示
+                    """
+                    path, path_status, channels = get_encoder_info(encoder_name)
+                    return [
+                        gr.update(value=path),  # 实际路径用于保存
+                        gr.update(value=path_status),  # 显示路径包含存在状态
+                        gr.update(value=channels)
+                    ]
+                
+                # Encoder选择下拉框
+                preprocess_encoder = gr.Dropdown(
+                    choices=get_available_encoders(),
+                    label="选择编码器 (Encoder)",
+                    value="contentvec768l12"  # 默认值与配置文件保持一致
+                )
+                
+                # 隐藏的实际路径字段
+                preprocess_encoder_path = gr.Textbox(
+                    label="编码器路径",
+                    value="pretrain/contentvec/checkpoint_best_legacy_500.pt",
+                    interactive=False,
+                    visible=False  # 隐藏该字段
+                )
+                
+                # 显示用的路径字段
+                preprocess_encoder_path_display = gr.Textbox(
+                    label="编码器路径",
+                    value="pretrain/contentvec/checkpoint_best_legacy_500.pt (存在)",
+                    interactive=False
+                )
+                
+                preprocess_encoder_channels = gr.Number(
+                    label="编码器输出通道数 (encoder_out_channels)",
+                    value=768,
+                    interactive=False
+                )
+                
+                # 添加刷新按钮
+                refresh_encoder_list = gr.Button("刷新编码器列表")
+                
                 refresh_preprocess_config = gr.Button("刷新配置文件列表")
+                load_preprocess_config_button = gr.Button("加载预处理配置")
+                save_preprocess_config_button = gr.Button("保存预处理配置")
                 preprocess_button = gr.Button("开始预处理")
                 stop_preprocess_button = gr.Button("停止预处理")
             with gr.Column():
                 preprocess_output = gr.Textbox(label="预处理输出", lines=10, max_lines=20)
+
+
+    def load_preprocess_config(config_path):
+        """
+        加载预处理配置
+        """
+        config_data = load_config_data(config_path)
+        if config_data is None:
+            return [gr.update(), gr.update(), gr.update(), gr.update()]
+        
+        # 获取数据参数
+        data_params = config_data.get('data', {})
+        encoder = data_params.get('encoder', 'contentvec768l12')
+        
+        # 获取编码器路径和通道数
+        encoder_ckpt = data_params.get('encoder_ckpt', '')
+        encoder_out_channels = data_params.get('encoder_out_channels', 768)
+        
+        # 构造显示用的路径
+        if encoder_ckpt and os.path.exists(encoder_ckpt):
+            encoder_ckpt_display = f"{encoder_ckpt} (存在)"
+        elif encoder_ckpt:
+            encoder_ckpt_display = f"{encoder_ckpt} (不存在)"
+        else:
+            encoder_ckpt_display = "未知路径"
+        
+        return [
+            gr.update(value=encoder),
+            gr.update(value=encoder_ckpt),
+            gr.update(value=encoder_ckpt_display),
+            gr.update(value=encoder_out_channels)
+        ]
+
+
+    def save_preprocess_config(config_path, encoder, encoder_path, encoder_channels):
+        """
+        保存预处理配置
+        """
+        config_data = load_config_data(config_path)
+        if config_data is None:
+            return "加载配置文件失败"
+        
+        # 更新数据参数
+        if 'data' not in config_data:
+            config_data['data'] = {}
+            
+        config_data['data']['encoder'] = encoder
+        config_data['data']['encoder_ckpt'] = encoder_path  # 保存实际路径，不包含状态文本
+        config_data['data']['encoder_out_channels'] = int(encoder_channels)
+        
+        # 保存配置文件
+        if save_config_data(config_path, config_data):
+            return f"预处理配置已保存到 {config_path}"
+        else:
+            return "保存配置文件失败"
 
 
     def update_preprocess_output():
@@ -717,6 +906,18 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
         lambda: gr.Dropdown(choices=get_config_files()),
         outputs=[preprocess_config]
     )
+    
+    load_preprocess_config_button.click(
+        load_preprocess_config,
+        inputs=[preprocess_config],
+        outputs=[preprocess_encoder, preprocess_encoder_path, preprocess_encoder_path_display, preprocess_encoder_channels]
+    )
+    
+    save_preprocess_config_button.click(
+        save_preprocess_config,
+        inputs=[preprocess_config, preprocess_encoder, preprocess_encoder_path, preprocess_encoder_channels],
+        outputs=[preprocess_output]
+    )
 
     preprocess_button.click(
         run_preprocess,
@@ -728,7 +929,21 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
         stop_preprocess,
         outputs=[preprocess_output]
     )
-
+    
+    # 添加编码器选择变化事件
+    preprocess_encoder.change(
+        update_encoder_info,
+        inputs=[preprocess_encoder],
+        outputs=[preprocess_encoder_path, preprocess_encoder_path_display, preprocess_encoder_channels]
+    )
+    
+    # 初始化时更新编码器信息
+    app.load(
+        update_encoder_info,
+        inputs=[preprocess_encoder],
+        outputs=[preprocess_encoder_path, preprocess_encoder_path_display, preprocess_encoder_channels]
+    )
+    
     with gr.Tab("模型训练"):
         with gr.Row():
             with gr.Column():
@@ -1204,6 +1419,25 @@ with gr.Blocks(title="ReFlow VAE SVC WebUI") as app:
     stop_infer_button.click(
         stop_inference,
         outputs=[infer_output]
+    )
+
+    # 添加事件处理
+    preprocess_encoder.change(
+        update_encoder_info,
+        inputs=[preprocess_encoder],
+        outputs=[preprocess_encoder_path, preprocess_encoder_path_display, preprocess_encoder_channels]
+    )
+    
+    refresh_encoder_list.click(
+        lambda: gr.Dropdown(choices=get_available_encoders()),
+        outputs=[preprocess_encoder]
+    )
+    
+    # 初始化时更新编码器信息
+    app.load(
+        update_encoder_info,
+        inputs=[preprocess_encoder],
+        outputs=[preprocess_encoder_path, preprocess_encoder_path_display, preprocess_encoder_channels]
     )
 
 if __name__ == "__main__":
